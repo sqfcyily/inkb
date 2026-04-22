@@ -1,0 +1,289 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: local('SF Pro Display'), local('-apple-system'), local('Helvetica Neue'), sans-serif;
+  font-weight: 100 900;
+}
+@font-face {
+  font-family: 'SF Pro Text';
+  src: local('SF Pro Text'), local('-apple-system'), local('Helvetica Neue'), sans-serif;
+  font-weight: 100 900;
+}
+
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --sidebar-bg: rgba(30, 30, 32, 0.6);
+  --list-bg: rgba(28, 28, 30, 0.7);
+  --editor-bg: #1e1e1e;
+  --toolbar-bg: rgba(30, 30, 32, 0.75);
+  
+  --panel-bg: #272729;
+  --panel-bg-hover: rgba(255, 255, 255, 0.1);
+  --panel-bg-2: #2a2a2d;
+  
+  --border: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  
+  --text: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --muted: rgba(255, 255, 255, 0.45);
+  
+  --input-bg: rgba(255, 255, 255, 0.05);
+  --input-border: rgba(255, 255, 255, 0.1);
+  
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+  
+  --sk-focus-color: #0a84ff;
+  --sk-body-link-color: #2997ff;
+  --apple-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --apple-modal-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f5f7;
+  --sidebar-bg: rgba(245, 245, 247, 0.6);
+  --list-bg: rgba(255, 255, 255, 0.7);
+  --editor-bg: #ffffff;
+  --toolbar-bg: rgba(245, 245, 247, 0.75);
+  
+  --panel-bg: rgba(0, 0, 0, 0.04);
+  --panel-bg-hover: rgba(0, 0, 0, 0.06);
+  --panel-bg-2: #ffffff;
+  
+  --border: rgba(0, 0, 0, 0.1);
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  
+  --text: rgba(0, 0, 0, 0.85);
+  --text-secondary: rgba(0, 0, 0, 0.65);
+  --muted: rgba(0, 0, 0, 0.45);
+  
+  --input-bg: #ffffff;
+  --input-border: rgba(0, 0, 0, 0.15);
+  
+  --scrollbar-thumb: rgba(0, 0, 0, 0.2);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+  
+  --sk-focus-color: #0071e3;
+  --sk-body-link-color: #0066cc;
+  --apple-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  --apple-modal-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+:root {
+  color-scheme: light dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+html {
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-clip: padding-box;
+  background-color: var(--scrollbar-thumb);
+  border: 3px solid transparent;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+body {
+  font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.47;
+  letter-spacing: -0.02em;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  display: none !important;
+}
+
+h1, h2, h3, h4, h5, h6, .display-font {
+  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+}
+
+.mac-glass {
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+.mac-toolbar {
+  background-color: var(--toolbar-bg);
+  border-bottom: 1px solid var(--border);
+  height: 52px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  z-index: 40;
+}
+
+.mac-sidebar {
+  background-color: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 30;
+}
+
+.mac-list {
+  background-color: var(--list-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+
+.mac-editor {
+  background-color: var(--editor-bg);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.mac-input {
+  height: 36px;
+  border-radius: 6px;
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  padding: 0 12px;
+  color: var(--text);
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+.mac-input:focus {
+  outline: none;
+  border-color: var(--sk-focus-color);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.3);
+}
+
+.mac-textarea {
+  border-radius: 8px;
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+.mac-textarea:focus {
+  outline: none;
+  border-color: var(--sk-focus-color);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.3);
+}
+
+.mac-btn {
+  height: 36px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.mac-btn:active {
+  transform: scale(0.97);
+}
+
+.mac-btn-primary {
+  background-color: var(--sk-focus-color);
+  color: #fff;
+}
+.mac-btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.mac-btn-secondary {
+  background-color: var(--panel-bg);
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
+}
+.mac-btn-secondary:hover {
+  background-color: var(--panel-bg-hover);
+}
+
+.mac-btn-ghost {
+  background-color: transparent;
+  color: var(--text-secondary);
+}
+.mac-btn-ghost:hover {
+  background-color: var(--panel-bg);
+  color: var(--text);
+}
+
+.mac-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.mac-icon-btn:hover {
+  background-color: var(--panel-bg);
+  color: var(--text);
+}
+.mac-icon-btn:active {
+  background-color: var(--panel-bg-hover);
+}
+
+.mac-modal {
+  background-color: var(--editor-bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--apple-modal-shadow);
+  border-radius: 12px;
+}
+
+.mac-surface {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--apple-shadow);
+  background-color: color-mix(in oklab, var(--editor-bg) 92%, transparent);
+}
+
+.cm-editor {
+  background: transparent !important;
+}
+.cm-scroller {
+  font-family: 'SF Pro Text', -apple-system, sans-serif !important;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.font-sans { font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; }
+.font-medium, .font-semibold, .font-bold { font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; }

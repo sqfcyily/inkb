@@ -1,0 +1,14 @@
+.kb/
+.kb/**
+.pnpm-store/
+node_modules/
+node_modules/**
+**/node_modules/
+**/node_modules/**
+dist/
+dist/**
+**/dist/
+**/dist/**
+.env
+.DS_Store
+notes
