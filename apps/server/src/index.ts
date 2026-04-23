@@ -4,6 +4,7 @@ import multipart from '@fastify/multipart'
 import fs from 'fs/promises'
 import fsSync from 'fs'
 import path from 'path'
+import os from 'os'
 import { ulid } from 'ulid'
 import matter from 'gray-matter'
 import Database from 'better-sqlite3'
@@ -28,9 +29,9 @@ server.register(cors, {
 
 server.register(multipart)
 
-const ROOT_DIR = process.env.NODE_ENV === 'production' ? process.cwd() : path.resolve(process.cwd(), '../..')
-const NOTES_DIR = path.join(ROOT_DIR, 'notes')
-const DB_DIR = path.join(ROOT_DIR, '.kb')
+const HOME_DIR = os.homedir()
+const NOTES_DIR = path.join(HOME_DIR, 'Documents', 'inkb', 'notes')
+const DB_DIR = path.join(HOME_DIR, '.inkb')
 const SECRETS_FILE = path.join(DB_DIR, 'secrets.json')
 const CONFIG_FILE = path.join(DB_DIR, 'config.json')
 const NOTES_GIT_PATH = path.join(NOTES_DIR, '.git')
@@ -670,6 +671,25 @@ server.put('/categories/:oldName', async (request, reply) => {
   } catch (err: any) {
     server.log.error(err)
     return reply.code(500).send({ error: 'Failed to rename category' })
+  }
+})
+
+server.delete('/categories/:name', async (request, reply) => {
+  const { name } = request.params as { name: string }
+  if (name === 'Default') {
+    return reply.code(400).send({ error: 'Cannot delete Default category' })
+  }
+  const count = (db.prepare('SELECT COUNT(*) as cnt FROM notes_meta WHERE category = ?').get(name) as any)?.cnt ?? 0
+  if (count > 0) {
+    return reply.code(409).send({ error: 'Category is not empty' })
+  }
+  try {
+    const folderPath = path.join(NOTES_DIR, name)
+    await fs.rmdir(folderPath).catch(() => { })
+    return { success: true }
+  } catch (err: any) {
+    server.log.error(err)
+    return reply.code(500).send({ error: 'Failed to delete category' })
   }
 })
 

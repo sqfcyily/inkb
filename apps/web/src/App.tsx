@@ -51,6 +51,8 @@ function App() {
   // Delete Modal State
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null)
+  const [deleteCategoryConfirmOpen, setDeleteCategoryConfirmOpen] = useState(false)
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null)
 
   const [themeChoice, setThemeChoice] = useState<'system' | 'light' | 'dark'>(() => {
     const v = localStorage.getItem('theme')
@@ -405,6 +407,20 @@ function App() {
     }
   }
 
+  const deleteCategory = async () => {
+    if (!categoryToDelete) return
+    try {
+      await fetch(`${API_URL}/categories/${encodeURIComponent(categoryToDelete)}`, { method: 'DELETE' })
+      setCategories(prev => prev.filter(c => c !== categoryToDelete))
+      if (selectedCategory === categoryToDelete) setSelectedCategory('All')
+    } catch (err) {
+      console.error('Failed to delete category', err)
+    } finally {
+      setDeleteCategoryConfirmOpen(false)
+      setCategoryToDelete(null)
+    }
+  }
+
   // Auto-save logic
   const handleContentChange = useCallback((val: string) => {
     if (!activeNote) return
@@ -697,13 +713,27 @@ function App() {
 
             <div className="flex items-center gap-1 shrink-0">
               {selectedCategory !== 'All' && selectedCategory !== 'Default' && !searchQuery.trim() && (
-                <button
-                  className="mac-icon-btn"
-                  title={t('renameCategory')}
-                  onClick={() => openRenameCategoryModal(selectedCategory)}
-                >
-                  <Edit3 size={18} />
-                </button>
+                <>
+                  <button
+                    className="mac-icon-btn"
+                    title={t('renameCategory')}
+                    onClick={() => openRenameCategoryModal(selectedCategory)}
+                  >
+                    <Edit3 size={18} />
+                  </button>
+                  {listNotes.length === 0 && (
+                    <button
+                      className="mac-icon-btn text-red-500 hover:text-red-600"
+                      title={t('deleteCategory')}
+                      onClick={() => {
+                        setCategoryToDelete(selectedCategory)
+                        setDeleteCategoryConfirmOpen(true)
+                      }}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </>
               )}
 
               <div className="relative group pb-2 -mb-2">
@@ -1575,9 +1605,40 @@ function App() {
         </div>
       )}
 
+      {deleteCategoryConfirmOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="mac-modal w-full max-w-[320px] bg-[var(--panel-bg-2)] border border-[var(--border)] shadow-2xl p-6 text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="mx-auto w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+              <AlertTriangle className="text-red-500" size={24} />
+            </div>
+            <h3 className="text-lg font-semibold text-[var(--text)] mb-2">{t('deleteCategoryConfirmTitle')}</h3>
+            <p className="text-[13px] text-[var(--text-secondary)] mb-6 leading-relaxed">
+              {t('deleteCategoryConfirmDesc')}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setDeleteCategoryConfirmOpen(false)
+                  setCategoryToDelete(null)
+                }}
+                className="flex-1 mac-btn mac-btn-secondary"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={deleteCategory}
+                className="flex-1 mac-btn bg-red-500 text-white hover:bg-red-600 border-transparent shadow-sm"
+              >
+                {t('deleteConfirmAction')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-2xl text-sm z-[999999] flex items-center gap-3 transition-all animate-in fade-in slide-in-from-bottom-5 ${
-          toast.type === 'error' ? 'bg-red-500/90 text-white' : 
+          toast.type === 'error' ? 'bg-red-500/90 text-white' :
           toast.type === 'success' ? 'bg-green-500/90 text-white' :
           toast.type === 'warning' ? 'bg-yellow-500/90 text-white' :
           'bg-blue-600/90 text-white'
