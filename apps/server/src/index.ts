@@ -92,12 +92,12 @@ async function ensureNotesRepo(remoteUrl: string, branch: string) {
     db.exec(`
       ALTER TABLE notes_meta ADD COLUMN category TEXT DEFAULT 'Default';
     `)
-  } catch (e) {}
+  } catch (e) { }
   try {
     db.exec(`
       ALTER TABLE notes_meta ADD COLUMN filePath TEXT;
     `)
-  } catch (e) {}
+  } catch (e) { }
 
   // Force re-indexing of all files after checking out branch
   try {
@@ -105,7 +105,7 @@ async function ensureNotesRepo(remoteUrl: string, branch: string) {
     for (const f of files) {
       await handleFileUpdate(f)
     }
-  } catch(e) {}
+  } catch (e) { }
 
   return { hasRemoteBranch }
 }
@@ -126,9 +126,9 @@ async function scanNotesDir(dir: string): Promise<string[]> {
 }
 
 async function setupDependencies() {
-  await fs.mkdir(NOTES_DIR, { recursive: true }).catch(() => {})
-  await fs.mkdir(DB_DIR, { recursive: true }).catch(() => {})
-  
+  await fs.mkdir(NOTES_DIR, { recursive: true }).catch(() => { })
+  await fs.mkdir(DB_DIR, { recursive: true }).catch(() => { })
+
   try {
     const data = await fs.readFile(SECRETS_FILE, 'utf-8')
     const raw = JSON.parse(data)
@@ -169,7 +169,7 @@ async function setupDependencies() {
   if (!secrets.baseURL) {
     secrets.baseURL = 'https://api.openai.com/v1'
   }
-  
+
   openai = new OpenAI({
     baseURL: secrets.baseURL,
     apiKey: secrets.apiKey || 'dummy',
@@ -179,10 +179,10 @@ async function setupDependencies() {
 // Database setup
 try {
   fsSync.mkdirSync(NOTES_DIR, { recursive: true })
-} catch (e) {}
+} catch (e) { }
 try {
   fsSync.mkdirSync(DB_DIR, { recursive: true })
-} catch (e) {}
+} catch (e) { }
 
 const db = new Database(path.join(DB_DIR, 'index.sqlite'))
 
@@ -203,10 +203,10 @@ db.exec(`
 
 try {
   db.exec(`ALTER TABLE notes_meta ADD COLUMN category TEXT DEFAULT 'Default';`)
-} catch (e) {}
+} catch (e) { }
 try {
   db.exec(`ALTER TABLE notes_meta ADD COLUMN filePath TEXT;`)
-} catch (e) {}
+} catch (e) { }
 
 const insertMeta = db.prepare(`
   INSERT INTO notes_meta (id, title, updatedAt, createdAt, category, filePath)
@@ -231,7 +231,7 @@ function chunkText(text: string, maxTokens = 500) {
   const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim())
   const chunks: string[] = []
   let currentChunk = ''
-  
+
   for (const p of paragraphs) {
     if ((currentChunk + p).length > maxTokens * 4) {
       if (currentChunk) chunks.push(currentChunk)
@@ -269,7 +269,7 @@ server.put('/api/settings', async (request, reply) => {
     secrets.baseURL = 'https://api.openai.com/v1'
   }
 
-  await fs.mkdir(DB_DIR, { recursive: true }).catch(() => {})
+  await fs.mkdir(DB_DIR, { recursive: true }).catch(() => { })
   await fs.writeFile(SECRETS_FILE, JSON.stringify(secrets, null, 2), 'utf-8')
 
   openai = new OpenAI({
@@ -329,7 +329,7 @@ server.put('/api/git/config', async (request, reply) => {
     notesGitBranch: branch
   }
 
-  await fs.mkdir(DB_DIR, { recursive: true }).catch(() => {})
+  await fs.mkdir(DB_DIR, { recursive: true }).catch(() => { })
   await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8')
 
   return reply.send({
@@ -345,11 +345,11 @@ const handleFileUpdate = async (filePath: string) => {
     const parsed = matter(content)
     const id = parsed.data.id || path.basename(filePath, '.md')
     const title = parsed.data.title || 'Untitled'
-    
+
     // Check if meta data already exists, if not use current time
     let updatedAt = parsed.data.updatedAt
     let createdAt = parsed.data.createdAt
-    
+
     if (!updatedAt || !createdAt) {
       try {
         const stats = await fs.stat(filePath)
@@ -365,7 +365,7 @@ const handleFileUpdate = async (filePath: string) => {
     const relPath = path.relative(NOTES_DIR, filePath).replace(/\\/g, '/')
     const dir = path.dirname(relPath)
     const category = dir === '.' ? 'Default' : dir.split('/')[0]
-    
+
     db.transaction(() => {
       insertMeta.run({ id, title, updatedAt, createdAt, category, filePath: relPath })
       deleteFts.run(id)
@@ -420,25 +420,25 @@ server.post('/api/ingest/url', async (request, reply) => {
     const doc = new JSDOM(html, { url });
     const reader = new Readability(doc.window.document);
     const article = reader.parse();
-    
+
     const title = article?.title || url;
     const textContent = article?.textContent || '';
-    
+
     const id = ulid();
     const now = new Date().toISOString();
     const data = { id, title, createdAt: now, updatedAt: now, source: url };
-    
+
     const fileContent = matter.stringify(textContent, data);
     const category = 'Default'
     const relPath = path.join(category === 'Default' ? '' : category, `${id}.md`).replace(/\\/g, '/')
     const filePath = path.join(NOTES_DIR, relPath);
-    
+
     if (category !== 'Default') {
-      await fs.mkdir(path.join(NOTES_DIR, category), { recursive: true }).catch(() => {})
+      await fs.mkdir(path.join(NOTES_DIR, category), { recursive: true }).catch(() => { })
     }
-    
+
     await fs.writeFile(filePath, fileContent, 'utf-8');
-    
+
     return { id, title };
   } catch (err) {
     return reply.code(500).send({ error: 'Failed to ingest URL' });
@@ -448,14 +448,14 @@ server.post('/api/ingest/url', async (request, reply) => {
 server.post('/api/ingest/file', async (request, reply) => {
   const data = await request.file();
   if (!data) return reply.code(400).send({ error: 'No file uploaded' });
-  
+
   try {
     const buffer = await data.toBuffer();
     const filename = data.filename || 'Document';
     const ext = path.extname(filename).toLowerCase();
-    
+
     let textContent = '';
-    
+
     if (ext === '.pdf') {
       const parsedPdf = await pdfParse(buffer);
       textContent = parsedPdf.text;
@@ -468,24 +468,24 @@ server.post('/api/ingest/file', async (request, reply) => {
     } else {
       return reply.code(400).send({ error: 'Unsupported file format' });
     }
-    
+
     const title = filename;
-    
+
     const id = ulid();
     const now = new Date().toISOString();
     const meta = { id, title, createdAt: now, updatedAt: now, type: 'file', sourceRef: filename };
-    
+
     const fileContent = matter.stringify(textContent, meta);
     const category = 'Default'
     const relPath = path.join(category === 'Default' ? '' : category, `${id}.md`).replace(/\\/g, '/')
     const filePath = path.join(NOTES_DIR, relPath);
-    
+
     if (category !== 'Default') {
-      await fs.mkdir(path.join(NOTES_DIR, category), { recursive: true }).catch(() => {})
+      await fs.mkdir(path.join(NOTES_DIR, category), { recursive: true }).catch(() => { })
     }
-    
+
     await fs.writeFile(filePath, fileContent, 'utf-8');
-    
+
     return { id, title };
   } catch (err) {
     console.error(err);
@@ -496,23 +496,23 @@ server.post('/api/ingest/file', async (request, reply) => {
 server.post('/api/ingest/memo', async (request, reply) => {
   const { content } = request.body as { content: string };
   if (!content) return reply.code(400).send({ error: 'No content provided' });
-  
+
   const title = content.substring(0, 50).trim() + (content.length > 50 ? '...' : '');
   const id = ulid();
   const now = new Date().toISOString();
   const data = { id, title, createdAt: now, updatedAt: now, type: 'memo' };
-    
-    const fileContent = matter.stringify(content, data)
-    const category = 'Default'
-    const relPath = path.join(category === 'Default' ? '' : category, `${id}.md`).replace(/\\/g, '/')
-    const filePath = path.join(NOTES_DIR, relPath)
-    
-    if (category !== 'Default') {
-      await fs.mkdir(path.join(NOTES_DIR, category), { recursive: true }).catch(() => {})
-    }
-    
-    await fs.writeFile(filePath, fileContent, 'utf-8');
-  
+
+  const fileContent = matter.stringify(content, data)
+  const category = 'Default'
+  const relPath = path.join(category === 'Default' ? '' : category, `${id}.md`).replace(/\\/g, '/')
+  const filePath = path.join(NOTES_DIR, relPath)
+
+  if (category !== 'Default') {
+    await fs.mkdir(path.join(NOTES_DIR, category), { recursive: true }).catch(() => { })
+  }
+
+  await fs.writeFile(filePath, fileContent, 'utf-8');
+
   return { id, title };
 });
 
@@ -526,21 +526,12 @@ server.post('/api/ai/summarize', async (request, reply) => {
     const filePath = path.join(NOTES_DIR, row.filePath)
     const content = await fs.readFile(filePath, 'utf-8');
     const parsed = matter(content);
-    
+
     if (!secrets.apiKey || secrets.apiKey === 'dummy') {
       return reply.code(400).send({ error: 'API Key not configured' });
     }
 
-    const prompt = `你是一个专业的编辑和知识库助手。请完成以下任务：
-1. 为这篇笔记提取简明扼要的摘要和关键点。
-2. 对原文进行重构：修复拼写错误、改善语言清晰度、优化段落排版（保持 Markdown 格式）。
-
-请严格以下面的结构返回最终内容，不要添加任何多余的寒暄，并且必须使用 Markdown 引用语法（在摘要每行前加 \`> \`）来呈现摘要部分：
-
-> [在此输出摘要和要点，每行都必须以 \`> \` 开头]
-
-[在此输出经过重构、排版和修复后的原文正文，正文部分不需要加引用符号]
-
+    const prompt = `你是一个专业的编辑和知识库助手。请对原文进行重构：修复拼写错误、改善语言清晰度、优化段落排版（保持 Markdown 格式，不要添加任何多余的说明）。
 需要处理的原文如下：
 ${parsed.content.substring(0, 15000)}`;
 
@@ -638,15 +629,15 @@ server.put('/categories/:oldName', async (request, reply) => {
   const { oldName } = request.params as { oldName: string }
   const { newName } = request.body as { newName: string }
   if (!newName || newName === oldName) return { success: true }
-  
+
   const oldFolder = oldName === 'Default' ? '' : oldName
   const newFolder = newName === 'Default' ? '' : newName
-  
+
   try {
     if (oldFolder === '') {
       // Move all files from root to newFolder
       const files = await fs.readdir(NOTES_DIR)
-      await fs.mkdir(path.join(NOTES_DIR, newFolder), { recursive: true }).catch(()=>{})
+      await fs.mkdir(path.join(NOTES_DIR, newFolder), { recursive: true }).catch(() => { })
       for (const f of files) {
         if (f.endsWith('.md')) {
           await fs.rename(path.join(NOTES_DIR, f), path.join(NOTES_DIR, newFolder, f))
@@ -661,20 +652,20 @@ server.put('/categories/:oldName', async (request, reply) => {
           await fs.rename(path.join(folderPath, f), path.join(NOTES_DIR, f))
         }
       }
-      await fs.rmdir(folderPath).catch(()=>{})
+      await fs.rmdir(folderPath).catch(() => { })
     } else {
       // Rename folder
       await fs.rename(path.join(NOTES_DIR, oldFolder), path.join(NOTES_DIR, newFolder))
     }
-    
+
     // Update DB directly to avoid waiting for chokidar
     db.prepare('UPDATE notes_meta SET category = ?, filePath = replace(filePath, ?, ?) WHERE category = ?').run(
-      newName, 
-      oldFolder ? oldFolder + '/' : '', 
-      newFolder ? newFolder + '/' : '', 
+      newName,
+      oldFolder ? oldFolder + '/' : '',
+      newFolder ? newFolder + '/' : '',
       oldName
     )
-    
+
     return { success: true }
   } catch (err: any) {
     server.log.error(err)
@@ -697,7 +688,7 @@ server.get('/notes/:id', async (request, reply) => {
   try {
     const row = db.prepare('SELECT filePath FROM notes_meta WHERE id = ?').get(id) as any
     if (!row) return reply.code(404).send({ error: 'Note not found' })
-    
+
     const filePath = path.join(NOTES_DIR, row.filePath)
     const content = await fs.readFile(filePath, 'utf-8')
     const parsed = matter(content)
@@ -722,7 +713,7 @@ server.post('/notes', async (request, reply) => {
   const now = new Date().toISOString()
   const category = body.category || 'Default'
   const folder = category === 'Default' ? '' : category
-  
+
   const data = {
     id,
     title,
@@ -730,31 +721,31 @@ server.post('/notes', async (request, reply) => {
     updatedAt: now,
     category
   }
-  
+
   const fileContent = matter.stringify(content, data)
   const relPath = path.join(folder, `${id}.md`).replace(/\\/g, '/')
   const filePath = path.join(NOTES_DIR, relPath)
-  
+
   if (folder) {
-    await fs.mkdir(path.join(NOTES_DIR, folder), { recursive: true }).catch(() => {})
+    await fs.mkdir(path.join(NOTES_DIR, folder), { recursive: true }).catch(() => { })
   }
   await fs.writeFile(filePath, fileContent, 'utf-8')
-  
+
   return { id, title, content, createdAt: now, updatedAt: now, category }
 })
 
 server.put('/notes/:id', async (request, reply) => {
   const { id } = request.params as { id: string }
   const body = request.body as { title?: string; content?: string; category?: string }
-  
+
   try {
     const row = db.prepare('SELECT filePath, category FROM notes_meta WHERE id = ?').get(id) as any
     if (!row) return reply.code(404).send({ error: 'Note not found' })
-    
+
     let filePath = path.join(NOTES_DIR, row.filePath)
     const existingContent = await fs.readFile(filePath, 'utf-8')
     const parsed = matter(existingContent)
-    
+
     const newContent = body.content !== undefined ? body.content : parsed.content
     const newTitle = body.title !== undefined ? body.title : parsed.data.title
     const newCategory = body.category !== undefined ? body.category : (parsed.data.category || row.category || 'Default')
@@ -771,21 +762,21 @@ server.put('/notes/:id', async (request, reply) => {
     }
 
     const now = new Date().toISOString()
-    
+
     const data = {
       ...parsed.data,
       title: newTitle,
       updatedAt: now,
       category: newCategory
     }
-    
+
     const fileContent = matter.stringify(newContent, data)
-    
+
     // If category changed, we need to move the file
     if (newCategory !== (row.category || 'Default')) {
       const folder = newCategory === 'Default' ? '' : newCategory
       if (folder) {
-        await fs.mkdir(path.join(NOTES_DIR, folder), { recursive: true }).catch(() => {})
+        await fs.mkdir(path.join(NOTES_DIR, folder), { recursive: true }).catch(() => { })
       }
       const newRelPath = path.join(folder, `${id}.md`).replace(/\\/g, '/')
       const newFilePath = path.join(NOTES_DIR, newRelPath)
@@ -794,7 +785,7 @@ server.put('/notes/:id', async (request, reply) => {
     }
 
     await fs.writeFile(filePath, fileContent, 'utf-8')
-    
+
     return {
       id: parsed.data.id || id,
       title: data.title,
@@ -840,12 +831,12 @@ server.get('/api/git/status', async (request, reply) => {
     const status = await git.status()
     // Exclude .git directory itself from dirty calculation just in case
     const isDirtyFile = (f: string) => !f.startsWith('.git/') && !f.startsWith('.git\\')
-    
-    const dirtyCount = 
-      status.modified.filter(isDirtyFile).length + 
-      status.not_added.filter(isDirtyFile).length + 
-      status.deleted.filter(isDirtyFile).length + 
-      status.created.filter(isDirtyFile).length + 
+
+    const dirtyCount =
+      status.modified.filter(isDirtyFile).length +
+      status.not_added.filter(isDirtyFile).length +
+      status.deleted.filter(isDirtyFile).length +
+      status.created.filter(isDirtyFile).length +
       status.renamed.filter(f => isDirtyFile(f.to)).length
 
     const hasConflicts = status.conflicted.length > 0
@@ -878,11 +869,11 @@ server.post('/api/git/sync', async (request, reply) => {
 
     const status = await git.status()
     const isDirtyFile = (f: string) => !f.startsWith('.git/') && !f.startsWith('.git\\')
-    const isDirty = 
-      status.modified.some(isDirtyFile) || 
-      status.not_added.some(isDirtyFile) || 
-      status.deleted.some(isDirtyFile) || 
-      status.created.some(isDirtyFile) || 
+    const isDirty =
+      status.modified.some(isDirtyFile) ||
+      status.not_added.some(isDirtyFile) ||
+      status.deleted.some(isDirtyFile) ||
+      status.created.some(isDirtyFile) ||
       status.renamed.some(f => isDirtyFile(f.to))
 
     if (isDirty) {
@@ -912,7 +903,7 @@ server.post('/api/git/sync', async (request, reply) => {
     }
 
     await git.raw(['push', '-u', 'origin', branch])
-    
+
     return { success: true, message: 'Synced successfully' }
   } catch (err: any) {
     server.log.error(err)

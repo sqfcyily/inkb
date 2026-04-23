@@ -39,8 +39,9 @@ export default function NoteEditor({ content, onChange, theme }: { content: stri
 
   return (
     <div className="h-full w-full overflow-auto">
-      <div className="min-h-full py-10 px-4 max-w-5xl mx-auto">
+      <div className="min-h-full py-10 px-4 max-w-5xl mx-auto flex flex-col">
         <BlockNoteView
+          className="flex-1"
           editor={editor}
           theme={theme}
           onChange={async () => {
