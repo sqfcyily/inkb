@@ -1,8 +1,8 @@
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
-use tauri::{command, State};
+use std::path::PathBuf;
+use tauri::command;
 use gray_matter::engine::YAML;
 use gray_matter::Matter;
 use uuid::Uuid;
@@ -110,14 +110,14 @@ pub fn get_note(id: String) -> Result<Note, String> {
     let mut meta = None;
     let mut rows = stmt.query([&id]).map_err(|e| e.to_string())?;
     if let Some(row) = rows.next().map_err(|e| e.to_string())? {
-        let tags_str: String = row.get(5)?;
+        let tags_str: String = row.get(5).map_err(|e| e.to_string())?;
         let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
         meta = Some(NoteMeta {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            path: row.get(2)?,
-            created_at: row.get(3)?,
-            updated_at: row.get(4)?,
+            id: row.get(0).map_err(|e| e.to_string())?,
+            title: row.get(1).map_err(|e| e.to_string())?,
+            path: row.get(2).map_err(|e| e.to_string())?,
+            created_at: row.get(3).map_err(|e| e.to_string())?,
+            updated_at: row.get(4).map_err(|e| e.to_string())?,
             tags,
         });
     }
@@ -200,8 +200,8 @@ pub fn update_note(id: String, title: String, content: String, tags: Vec<String>
     
     let mut rows = stmt.query([&id]).map_err(|e| e.to_string())?;
     if let Some(row) = rows.next().map_err(|e| e.to_string())? {
-        path = row.get(0)?;
-        created_at = row.get(1)?;
+        path = row.get(0).map_err(|e| e.to_string())?;
+        created_at = row.get(1).map_err(|e| e.to_string())?;
     } else {
         return Err("Note not found".to_string());
     }
@@ -251,7 +251,7 @@ pub fn delete_note(id: String) -> Result<(), String> {
     let mut path = String::new();
     let mut rows = stmt.query([&id]).map_err(|e| e.to_string())?;
     if let Some(row) = rows.next().map_err(|e| e.to_string())? {
-        path = row.get(0)?;
+        path = row.get(0).map_err(|e| e.to_string())?;
     } else {
         return Err("Note not found".to_string());
     }

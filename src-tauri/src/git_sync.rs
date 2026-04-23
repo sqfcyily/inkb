@@ -1,4 +1,4 @@
-use git2::{Repository, Signature, PushOptions, RemoteCallbacks};
+use git2::{Repository, Signature};
 use std::path::PathBuf;
 use tauri::command;
 use serde::{Deserialize, Serialize};
@@ -40,7 +40,7 @@ pub fn git_status() -> Result<GitStatus, String> {
 }
 
 #[command]
-pub fn git_sync(remote: String, branch: String) -> Result<(), String> {
+pub fn git_sync(_remote: String, _branch: String) -> Result<(), String> {
     let repo = Repository::open(get_kb_dir()).map_err(|e| e.to_string())?;
     
     // 1. Commit everything

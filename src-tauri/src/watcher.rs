@@ -1,9 +1,6 @@
-use std::path::Path;
 use std::sync::mpsc::channel;
-use notify::{Watcher, RecursiveMode, Event, RecommendedWatcher, Config};
+use notify::{Watcher, RecursiveMode, RecommendedWatcher, Config};
 use tauri::{AppHandle, Emitter};
-use std::time::Duration;
-use crate::db::get_db_path;
 
 pub fn start_watcher(app_handle: AppHandle) {
     std::thread::spawn(move || {
@@ -19,7 +16,7 @@ pub fn start_watcher(app_handle: AppHandle) {
         
         loop {
             match rx.recv() {
-                Ok(Ok(event)) => {
+                Ok(Ok(_event)) => {
                     // When a file is updated/created/deleted, we can emit an event to the frontend
                     // In a complete implementation we'd also sync the sqlite db here
                     // For simplicity, we just notify the frontend that notes changed
