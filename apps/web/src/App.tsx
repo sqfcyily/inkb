@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Plus, Settings, FileText, Trash2, Search, ArrowDownToLine, Link, File, FileEdit, X, RefreshCw, AlertTriangle, Info, CheckCircle, Eye, Edit3, Sparkles, Sun, Moon, Monitor, Folder, ChevronDown, PlusCircle, ListFilter } from 'lucide-react'
+import { Plus, Settings, FileText, Trash2, ArrowDownToLine, Link, File, FileEdit, X, RefreshCw, AlertTriangle, Info, CheckCircle, Eye, Edit3, Sparkles, Sun, Moon, Monitor, Folder, ChevronDown, PlusCircle, ListFilter } from 'lucide-react'
 import { useI18n } from './I18nProvider'
 import NoteEditor from './NoteEditor'
 
