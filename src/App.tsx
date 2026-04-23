@@ -3,8 +3,24 @@ import { Plus, Settings, FileText, Trash2, Search, ArrowDownToLine, Link, File, 
 import { useI18n } from './I18nProvider'
 import NoteEditor from './NoteEditor'
 
-import { invoke } from '@tauri-apps/api/core'
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+
+// Global API logger interceptor (like Java AOP/Interceptor)
+const invoke = async (cmd: string, args?: any) => {
+  console.log(`[API Request] -> ${cmd}`, args ? args : '')
+  const startTime = performance.now()
+  try {
+    const res = await tauriInvoke(cmd, args)
+    const duration = (performance.now() - startTime).toFixed(2)
+    console.log(`[API Response] <- ${cmd} (${duration}ms)`, res)
+    return res
+  } catch (err) {
+    const duration = (performance.now() - startTime).toFixed(2)
+    console.error(`[API Error] <- ${cmd} (${duration}ms)`, err)
+    throw err
+  }
+}
 
 const mapNote = (n: any): Note => ({
   id: n.id,
