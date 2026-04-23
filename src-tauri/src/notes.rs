@@ -310,6 +310,9 @@ pub fn rename_category(old_name: String, new_name: String) -> Result<(), String>
         }
     }
     
+    Ok(())
+}
+
 #[command]
 pub fn search_notes(q: String) -> Result<Vec<NoteMeta>, String> {
     let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
