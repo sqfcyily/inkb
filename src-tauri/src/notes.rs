@@ -63,6 +63,7 @@ pub fn get_categories() -> Result<Vec<String>, String> {
     }).map_err(|e| e.to_string())?;
     
     let mut all_tags = std::collections::HashSet::new();
+    all_tags.insert("Default".to_string());
     for tags_str in tag_iters {
         if let Ok(ts) = tags_str {
             if let Ok(parsed) = serde_json::from_str::<Vec<String>>(&ts) {

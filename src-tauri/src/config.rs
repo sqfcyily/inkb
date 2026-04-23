@@ -28,7 +28,8 @@ pub fn write_json<T: Serialize>(filename: &str, data: &T) -> Result<(), String> 
 
 #[tauri::command]
 pub fn read_secrets() -> serde_json::Value {
-    read_json("secrets.json")
+    let val: serde_json::Value = read_json("secrets.json");
+    if val.is_null() { serde_json::json!({}) } else { val }
 }
 
 #[tauri::command]
@@ -38,7 +39,8 @@ pub fn write_secrets(secrets: serde_json::Value) -> Result<(), String> {
 
 #[tauri::command]
 pub fn read_config() -> serde_json::Value {
-    read_json("config.json")
+    let val: serde_json::Value = read_json("config.json");
+    if val.is_null() { serde_json::json!({}) } else { val }
 }
 
 #[tauri::command]
