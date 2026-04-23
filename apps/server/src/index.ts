@@ -300,7 +300,7 @@ server.post('/api/settings/test', async (request, reply) => {
   try {
     await client.chat.completions.create({
       model: chatModel,
-      messages: [{ role: 'user', content: 'ping' }],
+      messages: [{ role: 'user', content: 'hello' }],
       max_tokens: 8,
       temperature: 0
     })

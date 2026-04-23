@@ -589,9 +589,6 @@ function App() {
 
         <div className="flex-1 px-6 min-w-0 flex justify-center">
           <div className="relative w-full max-w-xl flex items-center">
-            <div className="absolute left-3 flex items-center justify-center pointer-events-none">
-              <Search className="text-[var(--muted)]" size={16} />
-            </div>
             <input
               type="text"
               ref={searchInputRef}
