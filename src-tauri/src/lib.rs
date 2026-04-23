@@ -10,6 +10,8 @@ pub mod ai;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            env_logger::init();
+            
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

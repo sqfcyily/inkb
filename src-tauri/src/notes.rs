@@ -49,8 +49,12 @@ fn get_notes_dir() -> PathBuf {
 
 #[command]
 pub fn get_categories() -> Result<Vec<String>, String> {
+    log::info!("Fetching categories");
     // Currently tags serve as categories. Let's extract unique tags from db.
-    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
+    let conn = Connection::open(get_db_path()).map_err(|e| {
+        log::error!("Failed to open DB for categories: {}", e);
+        e.to_string()
+    })?;
     let mut stmt = conn.prepare("SELECT tags FROM notes_meta").map_err(|e| e.to_string())?;
     
     let tag_iters = stmt.query_map([], |row| {
@@ -76,7 +80,11 @@ pub fn get_categories() -> Result<Vec<String>, String> {
 
 #[command]
 pub fn get_notes() -> Result<Vec<NoteMeta>, String> {
-    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
+    log::info!("Fetching all notes");
+    let conn = Connection::open(get_db_path()).map_err(|e| {
+        log::error!("Failed to open DB for notes: {}", e);
+        e.to_string()
+    })?;
     let mut stmt = conn.prepare("SELECT id, title, path, created_at, updated_at, tags FROM notes_meta ORDER BY updated_at DESC").map_err(|e| e.to_string())?;
     
     let note_iters = stmt.query_map([], |row| {
@@ -142,12 +150,13 @@ pub fn get_note(id: String) -> Result<Note, String> {
 
 #[command]
 pub fn create_note(title: String, content: String, tags: Vec<String>) -> Result<Note, String> {
+    log::info!("Creating note with title: {}", title);
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().timestamp_millis();
     let updated_at = created_at;
     let filename = format!("{}.md", id);
     let path = filename.clone();
-    
+
     let fm = FrontMatter {
         id: Some(id.clone()),
         title: Some(title.clone()),
@@ -155,18 +164,24 @@ pub fn create_note(title: String, content: String, tags: Vec<String>) -> Result<
         updated_at: Some(updated_at),
         tags: Some(tags.clone()),
     };
-    
+
     let fm_str = serde_json::to_string(&fm).map_err(|e| e.to_string())?;
     // We'll use yaml for frontmatter
     let yaml_fm = format!("---\n{}\n---\n", serde_yaml::to_string(&fm).unwrap_or_default());
     let full_content = format!("{}{}", yaml_fm, content);
-    
+
     let abs_path = get_notes_dir().join(&filename);
-    fs::write(&abs_path, full_content).map_err(|e| e.to_string())?;
-    
+    fs::write(&abs_path, full_content).map_err(|e| {
+        log::error!("Failed to write note file {}: {}", filename, e);
+        e.to_string()
+    })?;
+
     let tags_json = serde_json::to_string(&tags).unwrap_or_default();
-    
-    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
+
+    let conn = Connection::open(get_db_path()).map_err(|e| {
+        log::error!("Failed to open DB for create_note: {}", e);
+        e.to_string()
+    })?;
     conn.execute(
         "INSERT INTO notes_meta (id, title, path, created_at, updated_at, tags) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         [&id, &title, &path, &created_at.to_string(), &updated_at.to_string(), &tags_json],
@@ -245,7 +260,11 @@ pub fn update_note(id: String, title: String, content: String, tags: Vec<String>
 
 #[command]
 pub fn delete_note(id: String) -> Result<(), String> {
-    let conn = Connection::open(get_db_path()).map_err(|e| e.to_string())?;
+    log::info!("Deleting note with ID: {}", id);
+    let conn = Connection::open(get_db_path()).map_err(|e| {
+        log::error!("Failed to open DB for delete_note: {}", e);
+        e.to_string()
+    })?;
     let mut stmt = conn.prepare("SELECT path FROM notes_meta WHERE id = ?1").map_err(|e| e.to_string())?;
     
     let mut path = String::new();

@@ -7,8 +7,15 @@ use std::path::PathBuf;
 
 #[command]
 pub async fn import_url(url: String, tags: Vec<String>) -> Result<String, String> {
-    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
-    let html_content = response.text().await.map_err(|e| e.to_string())?;
+    log::info!("Starting to import URL: {}", url);
+    let response = reqwest::get(&url).await.map_err(|e| {
+        log::error!("Failed to fetch URL {}: {}", url, e);
+        e.to_string()
+    })?;
+    let html_content = response.text().await.map_err(|e| {
+        log::error!("Failed to get text from URL {}: {}", url, e);
+        e.to_string()
+    })?;
     
     let document = Html::parse_document(&html_content);
     
@@ -34,13 +41,17 @@ pub async fn import_url(url: String, tags: Vec<String>) -> Result<String, String
 
 #[command]
 pub fn import_file(name: String, content: Vec<u8>, tags: Vec<String>) -> Result<String, String> {
+    log::info!("Starting to import file: {}", name);
     let path_buf = PathBuf::from(&name);
     let ext = path_buf.extension().and_then(|e| e.to_str()).unwrap_or("");
-    
+
     let title = path_buf.file_stem().and_then(|s| s.to_str()).unwrap_or("Imported File").to_string();
     let text_content = match ext.to_lowercase().as_str() {
         "pdf" => {
-            let doc = Document::load_mem(&content).map_err(|e| e.to_string())?;
+            let doc = Document::load_mem(&content).map_err(|e| {
+                log::error!("Failed to parse PDF {}: {}", name, e);
+                e.to_string()
+            })?;
             let mut text = String::new();
             for page in doc.get_pages().keys() {
                 if let Ok(t) = doc.extract_text(&[*page]) {
