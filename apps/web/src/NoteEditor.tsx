@@ -121,7 +121,7 @@ export default function NoteEditor({ content, onChange, theme }: { content: stri
             onCreate={({ editor }) => {
               setEditor(editor);
             }}
-            className="w-full min-h-[500px] prose dark:prose-invert max-w-none focus:outline-none"
+            className="w-full min-h-[500px] prose prose-sm sm:prose-base dark:prose-invert max-w-none focus:outline-none prose-headings:text-[var(--text)] prose-p:text-[var(--text)] prose-strong:text-[var(--text)] prose-a:text-[var(--sk-body-link-color)] prose-code:text-[var(--text)] prose-blockquote:text-[var(--text-secondary)] prose-li:text-[var(--text)]"
           >
             <EditorCommand className="z-50 h-auto max-h-[330px] overflow-y-auto rounded-md border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 px-1 py-2 shadow-md transition-all">
               <EditorCommandEmpty className="px-2 text-gray-500">No results</EditorCommandEmpty>

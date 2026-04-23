@@ -285,5 +285,29 @@ h1, h2, h3, h4, h5, h6, .display-font {
   line-height: 1.6;
 }
 
+.ProseMirror {
+  outline: none !important;
+  color: var(--text) !important;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--muted);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.ProseMirror pre {
+  background-color: var(--input-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  padding: 1rem;
+}
+.ProseMirror code {
+  background-color: var(--input-bg);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
 .font-sans { font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; }
 .font-medium, .font-semibold, .font-bold { font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; }
