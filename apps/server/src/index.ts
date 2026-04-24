@@ -14,6 +14,7 @@ import { Readability } from '@mozilla/readability'
 import { JSDOM } from 'jsdom'
 import pdfParseMod from 'pdf-parse'
 import { simpleGit, SimpleGit } from 'simple-git'
+import * as lancedb from '@lancedb/lancedb'
 
 const pdfParse = typeof pdfParseMod === 'function' ? pdfParseMod : (pdfParseMod as any).default;
 
@@ -48,6 +49,10 @@ let openai: OpenAI
 let secrets: { baseURL?: string, apiKey?: string, chatModel?: string }
 let config: { notesGitRemoteUrl?: string | null, notesGitBranch?: string }
 let git: SimpleGit
+
+const LANCE_DB_DIR = path.join(DB_DIR, 'lancedb')
+let lanceConnection: lancedb.Connection
+let notesTable: lancedb.Table
 
 async function ensureNotesRepo(remoteUrl: string, branch: string) {
   const hasOwnRepo = hasNotesGitRepo()
@@ -177,6 +182,22 @@ async function setupDependencies() {
   })
 }
 
+async function setupLanceDB() {
+  await fs.mkdir(LANCE_DB_DIR, { recursive: true }).catch(() => { })
+  lanceConnection = await lancedb.connect(LANCE_DB_DIR)
+  const tableNames = await lanceConnection.tableNames()
+  if (tableNames.includes('notes_vectors')) {
+    notesTable = await lanceConnection.openTable('notes_vectors')
+  } else {
+    // 1536 is the default dimension for text-embedding-3-small
+    const dummyVector = Array(1536).fill(0)
+    notesTable = await lanceConnection.createTable('notes_vectors', [
+      { id: 'dummy', noteId: 'dummy', text: 'dummy', vector: dummyVector }
+    ])
+    await notesTable.delete("id = 'dummy'")
+  }
+}
+
 // Database setup
 try {
   fsSync.mkdirSync(NOTES_DIR, { recursive: true })
@@ -243,6 +264,27 @@ function chunkText(text: string, maxTokens = 500) {
   }
   if (currentChunk) chunks.push(currentChunk)
   return chunks.length > 0 ? chunks : [text.trim()].filter(Boolean)
+}
+
+async function getEmbeddings(texts: string[]): Promise<number[][]> {
+  if (!secrets.apiKey || secrets.apiKey === 'dummy') {
+    throw new Error('API Key not configured for embeddings')
+  }
+  
+  const vectors: number[][] = []
+  // Batch processing
+  for (let i = 0; i < texts.length; i += 100) {
+    const batch = texts.slice(i, i + 100)
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: batch,
+    })
+    // openai returns array in the same order as inputs
+    for (const data of response.data) {
+      vectors.push(data.embedding)
+    }
+  }
+  return vectors
 }
 
 server.get('/api/settings', async () => {
@@ -372,6 +414,28 @@ const handleFileUpdate = async (filePath: string) => {
       deleteFts.run(id)
       insertFts.run({ id, title, content: parsed.content })
     })()
+
+    // Vectorize and save to LanceDB
+    try {
+      if (notesTable && secrets.apiKey && secrets.apiKey !== 'dummy') {
+        // Delete old chunks for this note
+        await notesTable.delete(`noteId = '${id}'`).catch(() => {})
+        
+        const chunks = chunkText(parsed.content)
+        if (chunks.length > 0) {
+          const vectors = await getEmbeddings(chunks)
+          const rows = chunks.map((chunk, i) => ({
+            id: `${id}_${i}`,
+            noteId: id,
+            text: chunk,
+            vector: vectors[i]
+          }))
+          await notesTable.add(rows)
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to vectorize file ${filePath}:`, err)
+    }
   } catch (err) {
     console.error(`Failed to process file ${filePath}:`, err)
   }
@@ -384,6 +448,14 @@ const handleFileRemove = async (filePath: string) => {
     deleteMeta.run(id)
     deleteFts.run(id)
   })()
+
+  try {
+    if (notesTable) {
+      await notesTable.delete(`noteId = '${id}'`).catch(() => {})
+    }
+  } catch (err) {
+    console.error(`Failed to delete vectors for file ${filePath}:`, err)
+  }
 }
 
 server.get('/api/search', async (request, reply) => {
@@ -410,6 +482,48 @@ server.get('/api/search', async (request, reply) => {
   } catch (err) {
     server.log.error(err)
     return []
+  }
+})
+
+server.get('/api/search/semantic', async (request, reply) => {
+  const query = request.query as { q?: string, limit?: string }
+  const q = query.q || ''
+  const limit = parseInt(query.limit || '5', 10)
+
+  if (!q) {
+    return []
+  }
+
+  if (!notesTable || !secrets.apiKey || secrets.apiKey === 'dummy') {
+    return reply.code(400).send({ error: 'Vector search not configured (missing API key or LanceDB)' })
+  }
+
+  try {
+    const vectors = await getEmbeddings([q])
+    const queryVector = vectors[0]
+
+    const results = await notesTable
+      .search(queryVector)
+      .limit(limit)
+      .toArray()
+
+    // Join with meta table to get title
+    const formattedResults = results.map(r => {
+      const meta = db.prepare('SELECT title, filePath FROM notes_meta WHERE id = ?').get(r.noteId) as any
+      return {
+        id: r.id,
+        noteId: r.noteId,
+        title: meta ? meta.title : 'Unknown',
+        filePath: meta ? meta.filePath : '',
+        text: r.text,
+        score: r._distance
+      }
+    })
+
+    return formattedResults
+  } catch (err: any) {
+    server.log.error(err)
+    return reply.code(500).send({ error: err.message || 'Failed to perform semantic search' })
   }
 })
 
@@ -936,6 +1050,7 @@ let watcher: any
 const start = async () => {
   try {
     await setupDependencies()
+    await setupLanceDB()
 
     watcher = chokidar.watch(NOTES_DIR, {
       ignored: [/(^|[\/\\])\../, '**/.git/**', '**/node_modules/**'],
