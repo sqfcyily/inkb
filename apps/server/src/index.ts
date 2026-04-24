@@ -820,6 +820,48 @@ server.post('/api/ai/completion', async (request, reply) => {
   }
 });
 
+server.post('/api/ai/chat', async (request, reply) => {
+  const { messages } = request.body as { messages: any[] };
+  if (!messages || !Array.isArray(messages)) return reply.code(400).send({ error: 'Invalid messages' });
+
+  if (!secrets.apiKey || secrets.apiKey === 'dummy') {
+    return reply.code(400).send({ error: 'API Key not configured' });
+  }
+
+  try {
+    const stream = await openai.chat.completions.create({
+      model: secrets.chatModel || "gpt-4o-mini",
+      messages,
+      stream: true,
+    });
+
+    reply.raw.setHeader('Content-Type', 'text/event-stream');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    const origin = request.headers.origin || '*';
+    reply.raw.setHeader('Access-Control-Allow-Origin', origin);
+    reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+    reply.raw.flushHeaders();
+
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || '';
+      if (content) {
+        reply.raw.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+      }
+    }
+    reply.raw.write('data: [DONE]\n\n');
+    reply.raw.end();
+  } catch (err: any) {
+    console.error(err);
+    if (!reply.raw.headersSent) {
+      return reply.code(500).send({ error: err.message || 'Failed to generate AI response' });
+    } else {
+      reply.raw.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      reply.raw.end();
+    }
+  }
+});
+
 server.get('/categories', async (request, reply) => {
   try {
     const rows = db.prepare('SELECT DISTINCT category FROM notes_meta WHERE category IS NOT NULL ORDER BY category').all() as any[]

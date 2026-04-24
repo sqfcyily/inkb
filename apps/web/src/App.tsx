@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Plus, Settings, FileText, Trash2, ArrowDownToLine, Link, File, FileEdit, X, RefreshCw, AlertTriangle, Info, CheckCircle, Eye, Edit3, Sparkles, Sun, Moon, Monitor, Folder, ChevronDown, PlusCircle, ListFilter } from 'lucide-react'
+import { Plus, Settings, FileText, Trash2, ArrowDownToLine, Link, File, FileEdit, X, RefreshCw, AlertTriangle, Info, CheckCircle, Eye, Edit3, Sparkles, Sun, Moon, Monitor, Folder, ChevronDown, PlusCircle, ListFilter, Search } from 'lucide-react'
 import { useI18n } from './I18nProvider'
 import NoteEditor from './NoteEditor'
+import { RagChatPanel } from './RagChatPanel'
 
 const API_URL =
   (import.meta as any)?.env?.VITE_API_URL ||
@@ -106,6 +107,9 @@ function App() {
   // Toast State
   type ToastType = 'info' | 'success' | 'error' | 'warning'
   const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null)
+  
+  // Rag Chat Panel State
+  const [isRagPanelOpen, setIsRagPanelOpen] = useState(false)
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
@@ -627,10 +631,21 @@ function App() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="mac-input w-full pl-[36px] pr-3"
             />
+            <Search className="absolute left-3 text-[var(--muted)]" size={16} />
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0 min-w-[150px] justify-end">
+          <button 
+            onClick={() => setIsRagPanelOpen(!isRagPanelOpen)} 
+            className={`mac-icon-btn ${isRagPanelOpen ? 'text-[#0071e3]' : ''}`} 
+            title="Knowledge Chat"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+
           <button onClick={createNote} className="mac-btn mac-btn-primary inline-flex items-center gap-2" title={t('newNote')}>
             <Plus size={16} />
             <span className="hidden sm:inline">{t('newNote')}</span>
@@ -1041,6 +1056,9 @@ function App() {
           )}
         </div>
       </div>
+
+      {/* Floating Rag Panel */}
+      <RagChatPanel isOpen={isRagPanelOpen} onClose={() => setIsRagPanelOpen(false)} apiUrl={API_URL} />
 
         {categoryModalOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
