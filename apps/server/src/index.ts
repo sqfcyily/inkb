@@ -647,8 +647,7 @@ server.post('/api/ingest/url', async (request, reply) => {
     }
 
     await fs.writeFile(filePath, fileContent, 'utf-8');
-    await handleFileUpdate(filePath)
-
+    
     return { id, title };
   } catch (err) {
     return reply.code(500).send({ error: 'Failed to ingest URL' });
@@ -695,8 +694,7 @@ server.post('/api/ingest/file', async (request, reply) => {
     }
 
     await fs.writeFile(filePath, fileContent, 'utf-8');
-    await handleFileUpdate(filePath)
-
+    
     return { id, title };
   } catch (err) {
     console.error(err);
@@ -723,8 +721,7 @@ server.post('/api/ingest/memo', async (request, reply) => {
   }
 
   await fs.writeFile(filePath, fileContent, 'utf-8');
-  await handleFileUpdate(filePath)
-
+  
   return { id, title };
 });
 
@@ -961,8 +958,7 @@ server.post('/notes', async (request, reply) => {
     await fs.mkdir(path.join(NOTES_DIR, folder), { recursive: true }).catch(() => { })
   }
   await fs.writeFile(filePath, fileContent, 'utf-8')
-  await handleFileUpdate(filePath)
-
+  
   return { id, title, content, createdAt: now, updatedAt: now, category }
 })
 
@@ -1017,8 +1013,7 @@ server.put('/notes/:id', async (request, reply) => {
     }
 
     await fs.writeFile(filePath, fileContent, 'utf-8')
-    await handleFileUpdate(filePath)
-
+    
     return {
       id: parsed.data.id || id,
       title: data.title,
@@ -1039,7 +1034,6 @@ server.delete('/notes/:id', async (request, reply) => {
     if (row) {
       const filePath = path.join(NOTES_DIR, row.filePath)
       await fs.unlink(filePath)
-      await handleFileRemove(filePath)
     }
     return { success: true }
   } catch (err) {
