@@ -92,7 +92,7 @@ function App() {
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [isTestingChatSettings, setIsTestingChatSettings] = useState(false)
   const [isTestingEmbeddingSettings, setIsTestingEmbeddingSettings] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'general' | 'git' | 'llm'>('general')
+  const [settingsTab, setSettingsTab] = useState<'general' | 'git' | 'llm' | 'embedding'>('general')
 
   const [notesGitRemoteUrl, setNotesGitRemoteUrl] = useState('')
   const [notesGitBranch, setNotesGitBranch] = useState('main')
@@ -1266,6 +1266,12 @@ function App() {
                 >
                   {t('tabLLM')}
                 </button>
+                <button
+                  onClick={() => setSettingsTab('embedding')}
+                  className={`w-full mac-btn ${settingsTab === 'embedding' ? 'mac-btn-secondary' : 'mac-btn-ghost'} justify-start`}
+                >
+                  {t('tabEmbedding')}
+                </button>
               </div>
             </div>
 
@@ -1390,6 +1396,11 @@ function App() {
                         </div>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {settingsTab === 'embedding' && (
+                  <div className="space-y-6">
                     <div className="space-y-3">
                       <div className="text-sm font-semibold text-[var(--text)]">{t('embeddings')}</div>
                       <div>
@@ -1431,7 +1442,7 @@ function App() {
               </div>
 
               <div className="p-4 border-t border-[var(--border)] bg-[var(--panel-bg)] flex justify-between gap-3">
-                {settingsTab === 'llm' ? (
+                {settingsTab === 'llm' && (
                   <div className="flex gap-2">
                     <button
                       onClick={async () => {
@@ -1466,6 +1477,10 @@ function App() {
                     >
                       {isTestingChatSettings ? t('testing') : t('test')}
                     </button>
+                  </div>
+                )}
+                {settingsTab === 'embedding' && (
+                  <div className="flex gap-2">
                     <button
                       onClick={async () => {
                         setIsTestingEmbeddingSettings(true)
@@ -1500,7 +1515,8 @@ function App() {
                       {isTestingEmbeddingSettings ? t('testing') : t('testEmbedding')}
                     </button>
                   </div>
-                ) : (
+                )}
+                {settingsTab !== 'llm' && settingsTab !== 'embedding' && (
                   <div />
                 )}
 
