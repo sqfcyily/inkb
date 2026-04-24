@@ -512,8 +512,8 @@ const handleFileUpdate = async (filePath: string) => {
       insertFts.run({ id, title, content: parsed.content })
     })()
 
-    try {
-      if (notesTable && openaiEmbeddings) {
+    if (notesTable && openaiEmbeddings) {
+      try {
         await notesTable.delete(`noteId = '${id}'`).catch(() => {})
         
         const chunks = chunkText(parsed.content)
@@ -527,9 +527,9 @@ const handleFileUpdate = async (filePath: string) => {
           }))
           await notesTable.add(rows)
         }
+      } catch (err) {
+        console.error(`Failed to vectorize file ${filePath}:`, err)
       }
-    } catch (err) {
-      console.error(`Failed to vectorize file ${filePath}:`, err)
     }
   } catch (err) {
     console.error(`Failed to process file ${filePath}:`, err)
