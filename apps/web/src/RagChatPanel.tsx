@@ -34,15 +34,54 @@ export const RagChatPanel: React.FC<{
     e.preventDefault()
     if (!input.trim() || isLoading) return
 
-    // Find context
+    // Find context using Hybrid Search (Semantic + Fulltext Fallback)
     let contextStr = ''
     try {
-      const res = await fetch(`${apiUrl}/api/search/semantic?q=${encodeURIComponent(input)}&limit=3`)
-      if (res.ok) {
-        const results = await res.json()
-        if (results && results.length > 0) {
-          contextStr = results.map((r: any) => `[Source: ${r.title}]\n${r.text}`).join('\n\n')
+      // 1. Parallel fetch from both semantic and keyword search
+      const [semanticRes, keywordRes] = await Promise.all([
+        fetch(`${apiUrl}/api/search/semantic?q=${encodeURIComponent(input)}&limit=3`).catch(() => null),
+        fetch(`${apiUrl}/api/search?q=${encodeURIComponent(input)}`).catch(() => null)
+      ])
+
+      const semanticResults = semanticRes?.ok ? await semanticRes.json() : []
+      const keywordResults = keywordRes?.ok ? await keywordRes.json() : []
+
+      // 2. Merge and deduplicate results
+      // We prioritize semantic results if available, then pad with keyword results
+      const mergedMap = new Map()
+      
+      // Add semantic results first
+      if (Array.isArray(semanticResults)) {
+        for (const r of semanticResults) {
+          if (r.noteId && !mergedMap.has(r.noteId)) {
+            mergedMap.set(r.noteId, r)
+          }
         }
+      }
+
+      // Add keyword results (FTS snippet might not have full text, but we can use what we have or fetch full if needed. 
+      // For now we just use the snippet or title if full text is not readily available in the list API)
+      if (Array.isArray(keywordResults)) {
+        for (const r of keywordResults) {
+          // If we already have this note from semantic search, skip it
+          if (!mergedMap.has(r.id)) {
+            // Note: FTS search returns {id, title, snippet}. We'll use snippet as text.
+            mergedMap.set(r.id, {
+              title: r.title,
+              text: r.snippet ? r.snippet.replace(/<[^>]*>?/gm, '') : '' // strip HTML tags from snippet
+            })
+          }
+        }
+      }
+
+      // 3. Take top 4 unique documents
+      const finalResults = Array.from(mergedMap.values()).slice(0, 4)
+
+      if (finalResults.length > 0) {
+        contextStr = finalResults
+          .filter(r => r.text && r.text.trim().length > 0)
+          .map(r => `[Source: ${r.title}]\n${r.text}`)
+          .join('\n\n')
       }
     } catch (e) {
       console.error('Failed to fetch context', e)
