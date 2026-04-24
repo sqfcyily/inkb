@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Plus, Settings, FileText, Trash2, Search, ArrowDownToLine, Link, File, FileEdit, X, RefreshCw, AlertTriangle, Info, CheckCircle, Eye, Edit3, Sparkles, Sun, Moon, Monitor, Folder, ChevronDown, PlusCircle, ListFilter } from 'lucide-react'
+import { Plus, Settings, FileText, Trash2, ArrowDownToLine, Link, File, FileEdit, X, RefreshCw, AlertTriangle, Info, CheckCircle, Eye, Edit3, Sparkles, Sun, Moon, Monitor, Folder, ChevronDown, PlusCircle, ListFilter } from 'lucide-react'
 import { useI18n } from './I18nProvider'
 import NoteEditor from './NoteEditor'
 
@@ -75,12 +75,23 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [settings, setSettings] = useState<{ baseURL: string, chatModel: string, hasApiKey: boolean } | null>(null)
+  const [settings, setSettings] = useState<{
+    baseURL: string
+    chatModel: string
+    hasApiKey: boolean
+    embeddingBaseURL: string
+    embeddingModel: string
+    hasEmbeddingApiKey: boolean
+  } | null>(null)
   const [settingsBaseURL, setSettingsBaseURL] = useState('')
   const [settingsChatModel, setSettingsChatModel] = useState('')
   const [settingsApiKey, setSettingsApiKey] = useState('')
+  const [settingsEmbeddingBaseURL, setSettingsEmbeddingBaseURL] = useState('')
+  const [settingsEmbeddingModel, setSettingsEmbeddingModel] = useState('')
+  const [settingsEmbeddingApiKey, setSettingsEmbeddingApiKey] = useState('')
   const [isSavingSettings, setIsSavingSettings] = useState(false)
-  const [isTestingSettings, setIsTestingSettings] = useState(false)
+  const [isTestingChatSettings, setIsTestingChatSettings] = useState(false)
+  const [isTestingEmbeddingSettings, setIsTestingEmbeddingSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'general' | 'git' | 'llm'>('general')
 
   const [notesGitRemoteUrl, setNotesGitRemoteUrl] = useState('')
@@ -134,6 +145,9 @@ function App() {
       setSettingsBaseURL(data.baseURL || '')
       setSettingsChatModel(data.chatModel || '')
       setSettingsApiKey('')
+      setSettingsEmbeddingBaseURL(data.embeddingBaseURL || '')
+      setSettingsEmbeddingModel(data.embeddingModel || '')
+      setSettingsEmbeddingApiKey('')
     } catch (err) {
       console.error(err)
       showToast(t('failedToLoadSettings'), 'error')
@@ -1376,45 +1390,116 @@ function App() {
                         </div>
                       </div>
                     </div>
+                    <div className="space-y-3">
+                      <div className="text-sm font-semibold text-[var(--text)]">{t('embeddings')}</div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text)] mb-2">{t('embeddingBaseUrl')}</label>
+                        <input
+                          type="text"
+                          value={settingsEmbeddingBaseURL}
+                          onChange={(e) => setSettingsEmbeddingBaseURL(e.target.value)}
+                          placeholder="https://api.openai.com/v1"
+                          className="mac-input w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text)] mb-2">{t('embeddingModel')}</label>
+                        <input
+                          type="text"
+                          value={settingsEmbeddingModel}
+                          onChange={(e) => setSettingsEmbeddingModel(e.target.value)}
+                          placeholder="text-embedding-3-small"
+                          className="mac-input w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-[var(--text)] mb-2">{t('embeddingApiKey')}</label>
+                        <input
+                          type="password"
+                          value={settingsEmbeddingApiKey}
+                          onChange={(e) => setSettingsEmbeddingApiKey(e.target.value)}
+                          placeholder={settings?.hasEmbeddingApiKey ? t('apiKeyLeaveBlank') : t('apiKeyEnter')}
+                          className="mac-input w-full"
+                        />
+                        <div className="mt-2 text-xs text-[var(--muted)]">
+                          {t('embeddingApiKey')}: {settings?.hasEmbeddingApiKey ? t('apiKeyConfigured') : t('apiKeyNotConfigured')}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
               <div className="p-4 border-t border-[var(--border)] bg-[var(--panel-bg)] flex justify-between gap-3">
                 {settingsTab === 'llm' ? (
-                  <button
-                    onClick={async () => {
-                      setIsTestingSettings(true)
-                      showToast(t('testing'), 'info')
-                      try {
-                        const body: any = {
-                          baseURL: settingsBaseURL,
-                          chatModel: settingsChatModel
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        setIsTestingChatSettings(true)
+                        showToast(t('testing'), 'info')
+                        try {
+                          const body: any = {
+                            baseURL: settingsBaseURL,
+                            chatModel: settingsChatModel
+                          }
+                          if (settingsApiKey) body.apiKey = settingsApiKey
+                          const res = await fetch(`${API_URL}/api/settings/test`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                          })
+                          const data = await res.json().catch(() => ({}))
+                          if (!res.ok) {
+                            showToast(data?.error || t('connectionTestFailed'), 'error')
+                            return
+                          }
+                          showToast(t('connectionOk'), 'success')
+                        } catch (err) {
+                          console.error(err)
+                          showToast(t('connectionTestFailed'), 'error')
+                        } finally {
+                          setIsTestingChatSettings(false)
                         }
-                        if (settingsApiKey) body.apiKey = settingsApiKey
-                        const res = await fetch(`${API_URL}/api/settings/test`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(body)
-                        })
-                        const data = await res.json().catch(() => ({}))
-                        if (!res.ok) {
-                          showToast(data?.error || t('connectionTestFailed'), 'error')
-                          return
+                      }}
+                      disabled={isTestingChatSettings}
+                      className="mac-btn mac-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isTestingChatSettings ? t('testing') : t('test')}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        setIsTestingEmbeddingSettings(true)
+                        showToast(t('testing'), 'info')
+                        try {
+                          const body: any = {
+                            embeddingBaseURL: settingsEmbeddingBaseURL,
+                            embeddingModel: settingsEmbeddingModel,
+                          }
+                          if (settingsEmbeddingApiKey) body.embeddingApiKey = settingsEmbeddingApiKey
+                          const res = await fetch(`${API_URL}/api/settings/test-embedding`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                          })
+                          const data = await res.json().catch(() => ({}))
+                          if (!res.ok) {
+                            showToast(data?.error || t('connectionTestFailed'), 'error')
+                            return
+                          }
+                          showToast(t('connectionOk'), 'success')
+                        } catch (err) {
+                          console.error(err)
+                          showToast(t('connectionTestFailed'), 'error')
+                        } finally {
+                          setIsTestingEmbeddingSettings(false)
                         }
-                        showToast(t('connectionOk'), 'success')
-                      } catch (err) {
-                        console.error(err)
-                        showToast(t('connectionTestFailed'), 'error')
-                      } finally {
-                        setIsTestingSettings(false)
-                      }
-                    }}
-                    disabled={isTestingSettings}
-                    className="mac-btn mac-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isTestingSettings ? t('testing') : t('test')}
-                  </button>
+                      }}
+                      disabled={isTestingEmbeddingSettings}
+                      className="mac-btn mac-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isTestingEmbeddingSettings ? t('testing') : t('testEmbedding')}
+                    </button>
+                  </div>
                 ) : (
                   <div />
                 )}
@@ -1433,9 +1518,12 @@ function App() {
                     try {
                       const body: any = {
                         baseURL: settingsBaseURL,
-                        chatModel: settingsChatModel
+                        chatModel: settingsChatModel,
+                        embeddingBaseURL: settingsEmbeddingBaseURL,
+                        embeddingModel: settingsEmbeddingModel,
                       }
                       if (settingsApiKey) body.apiKey = settingsApiKey
+                      if (settingsEmbeddingApiKey) body.embeddingApiKey = settingsEmbeddingApiKey
                       const res = await fetch(`${API_URL}/api/settings`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -1460,6 +1548,7 @@ function App() {
 
                       setSettings(data)
                       setSettingsApiKey('')
+                      setSettingsEmbeddingApiKey('')
                       setNotesGitRemoteUrl(gitData.notesGitRemoteUrl || '')
                       setNotesGitBranch(gitData.notesGitBranch || 'main')
                       showToast(t('saved'), 'success')

@@ -46,7 +46,15 @@ const hasNotesGitRepo = () => {
 }
 
 let openai: OpenAI
-let secrets: { baseURL?: string, apiKey?: string, chatModel?: string }
+let openaiEmbeddings: OpenAI | null
+let secrets: {
+  baseURL?: string
+  apiKey?: string
+  chatModel?: string
+  embeddingBaseURL?: string
+  embeddingApiKey?: string
+  embeddingModel?: string
+}
 let config: { notesGitRemoteUrl?: string | null, notesGitBranch?: string }
 let git: SimpleGit
 
@@ -141,10 +149,20 @@ async function setupDependencies() {
     secrets = {
       baseURL: raw?.baseURL,
       apiKey: raw?.apiKey,
-      chatModel: raw?.chatModel
+      chatModel: raw?.chatModel,
+      embeddingBaseURL: raw?.embeddingBaseURL,
+      embeddingApiKey: raw?.embeddingApiKey,
+      embeddingModel: raw?.embeddingModel
     }
   } catch {
-    secrets = { baseURL: 'https://api.openai.com/v1', apiKey: '', chatModel: 'gpt-4o-mini' }
+    secrets = {
+      baseURL: 'https://api.openai.com/v1',
+      apiKey: '',
+      chatModel: 'gpt-4o-mini',
+      embeddingBaseURL: '',
+      embeddingApiKey: '',
+      embeddingModel: 'text-embedding-3-small'
+    }
     await fs.writeFile(SECRETS_FILE, JSON.stringify(secrets, null, 2))
   }
 
@@ -175,11 +193,24 @@ async function setupDependencies() {
   if (!secrets.baseURL) {
     secrets.baseURL = 'https://api.openai.com/v1'
   }
+  if (!secrets.embeddingModel) {
+    secrets.embeddingModel = 'text-embedding-3-small'
+  }
 
   openai = new OpenAI({
     baseURL: secrets.baseURL,
     apiKey: secrets.apiKey || 'dummy',
   })
+
+  const embeddingApiKey = (secrets.embeddingApiKey || '').trim()
+  if (embeddingApiKey) {
+    openaiEmbeddings = new OpenAI({
+      baseURL: (secrets.embeddingBaseURL || '').trim() || secrets.baseURL,
+      apiKey: embeddingApiKey,
+    })
+  } else {
+    openaiEmbeddings = null
+  }
 }
 
 async function setupLanceDB() {
@@ -189,7 +220,6 @@ async function setupLanceDB() {
   if (tableNames.includes('notes_vectors')) {
     notesTable = await lanceConnection.openTable('notes_vectors')
   } else {
-    // 1536 is the default dimension for text-embedding-3-small
     const dummyVector = Array(1536).fill(0)
     notesTable = await lanceConnection.createTable('notes_vectors', [
       { id: 'dummy', noteId: 'dummy', text: 'dummy', vector: dummyVector }
@@ -267,19 +297,17 @@ function chunkText(text: string, maxTokens = 500) {
 }
 
 async function getEmbeddings(texts: string[]): Promise<number[][]> {
-  if (!secrets.apiKey || secrets.apiKey === 'dummy') {
-    throw new Error('API Key not configured for embeddings')
+  if (!openaiEmbeddings) {
+    throw new Error('Embeddings not configured')
   }
-  
+
   const vectors: number[][] = []
-  // Batch processing
   for (let i = 0; i < texts.length; i += 100) {
     const batch = texts.slice(i, i + 100)
-    const response = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
+    const response = await openaiEmbeddings.embeddings.create({
+      model: secrets.embeddingModel || 'text-embedding-3-small',
       input: batch,
     })
-    // openai returns array in the same order as inputs
     for (const data of response.data) {
       vectors.push(data.embedding)
     }
@@ -288,20 +316,40 @@ async function getEmbeddings(texts: string[]): Promise<number[][]> {
 }
 
 server.get('/api/settings', async () => {
+  const embeddingApiKey = (secrets.embeddingApiKey || '').trim()
+  const embeddingsEnabled = !!embeddingApiKey
+  const embeddingBaseURL = embeddingsEnabled
+    ? ((secrets.embeddingBaseURL || '').trim() || secrets.baseURL || '')
+    : ''
+  const embeddingModel = embeddingsEnabled ? (secrets.embeddingModel || 'text-embedding-3-small') : ''
+
   return {
     baseURL: secrets.baseURL || '',
     chatModel: secrets.chatModel || 'gpt-4o-mini',
-    hasApiKey: !!(secrets.apiKey && secrets.apiKey !== 'dummy')
+    hasApiKey: !!(secrets.apiKey && secrets.apiKey !== 'dummy'),
+    embeddingBaseURL,
+    embeddingModel,
+    hasEmbeddingApiKey: embeddingsEnabled
   }
 })
 
 server.put('/api/settings', async (request, reply) => {
-  const body = request.body as { baseURL?: string, apiKey?: string, chatModel?: string }
+  const body = request.body as {
+    baseURL?: string
+    apiKey?: string
+    chatModel?: string
+    embeddingBaseURL?: string
+    embeddingApiKey?: string
+    embeddingModel?: string
+  }
 
   const next: typeof secrets = {
     baseURL: body.baseURL !== undefined ? body.baseURL : secrets.baseURL,
     chatModel: body.chatModel !== undefined ? body.chatModel : secrets.chatModel,
-    apiKey: body.apiKey !== undefined ? body.apiKey : secrets.apiKey
+    apiKey: body.apiKey !== undefined ? body.apiKey : secrets.apiKey,
+    embeddingBaseURL: body.embeddingBaseURL !== undefined ? body.embeddingBaseURL : secrets.embeddingBaseURL,
+    embeddingModel: body.embeddingModel !== undefined ? body.embeddingModel : secrets.embeddingModel,
+    embeddingApiKey: body.embeddingApiKey !== undefined ? body.embeddingApiKey : secrets.embeddingApiKey,
   }
 
   secrets = next
@@ -310,6 +358,9 @@ server.put('/api/settings', async (request, reply) => {
   }
   if (!secrets.baseURL) {
     secrets.baseURL = 'https://api.openai.com/v1'
+  }
+  if (!secrets.embeddingModel) {
+    secrets.embeddingModel = 'text-embedding-3-small'
   }
 
   await fs.mkdir(DB_DIR, { recursive: true }).catch(() => { })
@@ -320,10 +371,29 @@ server.put('/api/settings', async (request, reply) => {
     apiKey: secrets.apiKey || 'dummy'
   })
 
+  const embeddingApiKey = (secrets.embeddingApiKey || '').trim()
+  if (embeddingApiKey) {
+    openaiEmbeddings = new OpenAI({
+      baseURL: (secrets.embeddingBaseURL || '').trim() || secrets.baseURL || 'https://api.openai.com/v1',
+      apiKey: embeddingApiKey
+    })
+  } else {
+    openaiEmbeddings = null
+  }
+
+  const embeddingsEnabled = !!embeddingApiKey
+  const embeddingBaseURL = embeddingsEnabled
+    ? ((secrets.embeddingBaseURL || '').trim() || secrets.baseURL || '')
+    : ''
+  const embeddingModel = embeddingsEnabled ? (secrets.embeddingModel || 'text-embedding-3-small') : ''
+
   return reply.send({
     baseURL: secrets.baseURL || '',
     chatModel: secrets.chatModel || 'gpt-4o-mini',
-    hasApiKey: !!(secrets.apiKey && secrets.apiKey !== 'dummy')
+    hasApiKey: !!(secrets.apiKey && secrets.apiKey !== 'dummy'),
+    embeddingBaseURL,
+    embeddingModel,
+    hasEmbeddingApiKey: embeddingsEnabled
   })
 })
 
@@ -349,6 +419,33 @@ server.post('/api/settings/test', async (request, reply) => {
     })
   } catch (err: any) {
     return reply.code(500).send({ ok: false, error: err?.message || 'Chat 测试失败' })
+  }
+
+  return { ok: true }
+})
+
+server.post('/api/settings/test-embedding', async (request, reply) => {
+  const body = request.body as { embeddingBaseURL?: string, embeddingApiKey?: string, embeddingModel?: string } | undefined
+
+  const embeddingBaseURL =
+    (body?.embeddingBaseURL ?? secrets.embeddingBaseURL ?? '').trim() ||
+    (secrets.baseURL ?? 'https://api.openai.com/v1')
+  const embeddingApiKey = (body?.embeddingApiKey ?? secrets.embeddingApiKey ?? '').trim()
+  const embeddingModel = (body?.embeddingModel ?? secrets.embeddingModel ?? 'text-embedding-3-small').trim() || 'text-embedding-3-small'
+
+  if (!embeddingApiKey) {
+    return reply.code(400).send({ ok: false, error: 'embeddingApiKey 为空' })
+  }
+
+  const client = new OpenAI({ baseURL: embeddingBaseURL, apiKey: embeddingApiKey })
+
+  try {
+    await client.embeddings.create({
+      model: embeddingModel,
+      input: ['hello']
+    })
+  } catch (err: any) {
+    return reply.code(500).send({ ok: false, error: err?.message || 'Embedding 测试失败' })
   }
 
   return { ok: true }
@@ -415,10 +512,8 @@ const handleFileUpdate = async (filePath: string) => {
       insertFts.run({ id, title, content: parsed.content })
     })()
 
-    // Vectorize and save to LanceDB
     try {
-      if (notesTable && secrets.apiKey && secrets.apiKey !== 'dummy') {
-        // Delete old chunks for this note
+      if (notesTable && openaiEmbeddings) {
         await notesTable.delete(`noteId = '${id}'`).catch(() => {})
         
         const chunks = chunkText(parsed.content)
@@ -494,8 +589,8 @@ server.get('/api/search/semantic', async (request, reply) => {
     return []
   }
 
-  if (!notesTable || !secrets.apiKey || secrets.apiKey === 'dummy') {
-    return reply.code(400).send({ error: 'Vector search not configured (missing API key or LanceDB)' })
+  if (!notesTable || !openaiEmbeddings) {
+    return reply.code(400).send({ error: 'Vector search not configured' })
   }
 
   try {
@@ -507,7 +602,6 @@ server.get('/api/search/semantic', async (request, reply) => {
       .limit(limit)
       .toArray()
 
-    // Join with meta table to get title
     const formattedResults = results.map(r => {
       const meta = db.prepare('SELECT title, filePath FROM notes_meta WHERE id = ?').get(r.noteId) as any
       return {
