@@ -215,14 +215,40 @@ async function setupDependencies() {
 }
 
 async function setupSeekDB() {
-  seekClient = new SeekdbClient({
-    path: SEEKDB_PATH,
-    database: "inkb",
-  })
-  seekCollection = await seekClient.createCollection({
-    name: "notes",
-    embeddingFunction: new DefaultEmbeddingFunction(),
-  })
+  try {
+    if (process.platform === 'win32') {
+      const host = (process.env.SEEKDB_HOST || '').trim()
+      if (!host) {
+        server.log.warn('SeekDB embedded mode is not supported on win32-x64. Set SEEKDB_HOST/SEEKDB_PORT to use server mode, otherwise semantic search will be disabled.')
+        seekClient = null
+        seekCollection = null
+        return
+      }
+
+      seekClient = new SeekdbClient({
+        host,
+        port: Number(process.env.SEEKDB_PORT || 2881),
+        user: process.env.SEEKDB_USER || 'root',
+        password: process.env.SEEKDB_PASSWORD || '',
+        database: process.env.SEEKDB_DATABASE || 'inkb',
+        tenant: process.env.SEEKDB_TENANT || undefined,
+      } as any)
+    } else {
+      seekClient = new SeekdbClient({
+        path: SEEKDB_PATH,
+        database: 'inkb',
+      } as any)
+    }
+
+    seekCollection = await seekClient.createCollection({
+      name: 'notes',
+      embeddingFunction: new DefaultEmbeddingFunction(),
+    })
+  } catch (err: any) {
+    server.log.error(err)
+    seekClient = null
+    seekCollection = null
+  }
 }
 
 // Database setup
