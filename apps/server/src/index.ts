@@ -14,7 +14,8 @@ import { Readability } from '@mozilla/readability'
 import { JSDOM } from 'jsdom'
 import pdfParseMod from 'pdf-parse'
 import { simpleGit, SimpleGit } from 'simple-git'
-import * as lancedb from '@lancedb/lancedb'
+import { SeekdbClient } from 'seekdb'
+import { DefaultEmbeddingFunction } from '@seekdb/default-embed'
 
 const pdfParse = typeof pdfParseMod === 'function' ? pdfParseMod : (pdfParseMod as any).default;
 
@@ -58,9 +59,9 @@ let secrets: {
 let config: { notesGitRemoteUrl?: string | null, notesGitBranch?: string }
 let git: SimpleGit
 
-const LANCE_DB_DIR = path.join(DB_DIR, 'lancedb')
-let lanceConnection: lancedb.Connection
-let notesTable: lancedb.Table
+const SEEKDB_PATH = path.join(DB_DIR, 'seekdb.db')
+let seekClient: any
+let seekCollection: any
 
 async function ensureNotesRepo(remoteUrl: string, branch: string) {
   const hasOwnRepo = hasNotesGitRepo()
@@ -213,19 +214,15 @@ async function setupDependencies() {
   }
 }
 
-async function setupLanceDB() {
-  await fs.mkdir(LANCE_DB_DIR, { recursive: true }).catch(() => { })
-  lanceConnection = await lancedb.connect(LANCE_DB_DIR)
-  const tableNames = await lanceConnection.tableNames()
-  if (tableNames.includes('notes_vectors')) {
-    notesTable = await lanceConnection.openTable('notes_vectors')
-  } else {
-    const dummyVector = Array(1536).fill(0)
-    notesTable = await lanceConnection.createTable('notes_vectors', [
-      { id: 'dummy', noteId: 'dummy', text: 'dummy', vector: dummyVector }
-    ])
-    await notesTable.delete("id = 'dummy'")
-  }
+async function setupSeekDB() {
+  seekClient = new SeekdbClient({
+    path: SEEKDB_PATH,
+    database: "inkb",
+  })
+  seekCollection = await seekClient.createCollection({
+    name: "notes",
+    embeddingFunction: new DefaultEmbeddingFunction(),
+  })
 }
 
 // Database setup
@@ -512,20 +509,22 @@ const handleFileUpdate = async (filePath: string) => {
       insertFts.run({ id, title, content: parsed.content })
     })()
 
-    if (notesTable && openaiEmbeddings) {
+    if (seekCollection) {
       try {
-        await notesTable.delete(`noteId = '${id}'`).catch(() => {})
+        await seekCollection.delete({
+          where: { noteId: id }
+        }).catch(() => {})
         
         const chunks = chunkText(parsed.content)
         if (chunks.length > 0) {
-          const vectors = await getEmbeddings(chunks)
-          const rows = chunks.map((chunk, i) => ({
-            id: `${id}_${i}`,
-            noteId: id,
-            text: chunk,
-            vector: vectors[i]
-          }))
-          await notesTable.add(rows)
+          const ids = chunks.map((_, i) => `${id}_${i}`)
+          const metadatas = chunks.map(() => ({ noteId: id }))
+          
+          await seekCollection.add({
+            ids,
+            documents: chunks,
+            metadatas
+          })
         }
       } catch (err) {
         console.error(`Failed to vectorize file ${filePath}:`, err)
@@ -545,8 +544,10 @@ const handleFileRemove = async (filePath: string) => {
   })()
 
   try {
-    if (notesTable) {
-      await notesTable.delete(`noteId = '${id}'`).catch(() => {})
+    if (seekCollection) {
+      await seekCollection.delete({
+        where: { noteId: id }
+      }).catch(() => {})
     }
   } catch (err) {
     console.error(`Failed to delete vectors for file ${filePath}:`, err)
@@ -589,30 +590,31 @@ server.get('/api/search/semantic', async (request, reply) => {
     return []
   }
 
-  if (!notesTable || !openaiEmbeddings) {
-    return reply.code(400).send({ error: 'Vector search not configured' })
+  if (!seekCollection) {
+    return reply.code(400).send({ error: 'SeekDB not configured' })
   }
 
   try {
-    const vectors = await getEmbeddings([q])
-    const queryVector = vectors[0]
-
-    const results = await notesTable
-      .search(queryVector)
-      .limit(limit)
-      .toArray()
-
-    const formattedResults = results.map(r => {
-      const meta = db.prepare('SELECT title, filePath FROM notes_meta WHERE id = ?').get(r.noteId) as any
-      return {
-        id: r.id,
-        noteId: r.noteId,
-        title: meta ? meta.title : 'Unknown',
-        filePath: meta ? meta.filePath : '',
-        text: r.text,
-        score: r._distance
-      }
+    const results = await seekCollection.query({
+      queryTexts: [q],
+      nResults: limit
     })
+
+    const formattedResults = []
+    if (results.ids && results.ids[0]) {
+      for (let i = 0; i < results.ids[0].length; i++) {
+        const noteId = results.metadatas[0][i]?.noteId
+        const meta = db.prepare('SELECT title, filePath FROM notes_meta WHERE id = ?').get(noteId) as any
+        formattedResults.push({
+          id: results.ids[0][i],
+          noteId: noteId,
+          title: meta ? meta.title : 'Unknown',
+          filePath: meta ? meta.filePath : '',
+          text: results.documents[0][i],
+          score: results.distances ? results.distances[0][i] : 0
+        })
+      }
+    }
 
     return formattedResults
   } catch (err: any) {
@@ -1187,7 +1189,7 @@ let watcher: any
 const start = async () => {
   try {
     await setupDependencies()
-    await setupLanceDB()
+    await setupSeekDB()
 
     watcher = chokidar.watch(NOTES_DIR, {
       ignored: [/(^|[\/\\])\../, '**/.git/**', '**/node_modules/**'],
