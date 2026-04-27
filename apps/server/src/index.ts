@@ -1210,7 +1210,7 @@ let watcher: any
 const start = async () => {
   try {
     await setupDependencies()
-    await setupSeekDB()
+    await setupLanceDB()
 
     watcher = chokidar.watch(NOTES_DIR, {
       ignored: [/(^|[\/\\])\../, '**/.git/**', '**/node_modules/**'],
