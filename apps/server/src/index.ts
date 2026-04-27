@@ -14,8 +14,11 @@ import { Readability } from '@mozilla/readability'
 import { JSDOM } from 'jsdom'
 import pdfParseMod from 'pdf-parse'
 import { simpleGit, SimpleGit } from 'simple-git'
-import { SeekdbClient } from 'seekdb'
-import { DefaultEmbeddingFunction } from '@seekdb/default-embed'
+import * as lancedb from '@lancedb/lancedb'
+import { pipeline, env } from '@xenova/transformers'
+
+// Disable local models checking if we want to download from HF
+env.allowLocalModels = false;
 
 const pdfParse = typeof pdfParseMod === 'function' ? pdfParseMod : (pdfParseMod as any).default;
 
@@ -59,9 +62,10 @@ let secrets: {
 let config: { notesGitRemoteUrl?: string | null, notesGitBranch?: string }
 let git: SimpleGit
 
-const SEEKDB_PATH = path.join(DB_DIR, 'seekdb.db')
-let seekClient: any
-let seekCollection: any
+const LANCE_DB_DIR = path.join(DB_DIR, 'lancedb')
+let lanceConnection: lancedb.Connection
+let notesTable: lancedb.Table
+let localExtractor: any
 
 async function ensureNotesRepo(remoteUrl: string, branch: string) {
   const hasOwnRepo = hasNotesGitRepo()
@@ -214,40 +218,29 @@ async function setupDependencies() {
   }
 }
 
-async function setupSeekDB() {
+async function setupLanceDB() {
+  await fs.mkdir(LANCE_DB_DIR, { recursive: true }).catch(() => { })
+  lanceConnection = await lancedb.connect(LANCE_DB_DIR)
+  const tableNames = await lanceConnection.tableNames()
+  if (tableNames.includes('notes_vectors')) {
+    notesTable = await lanceConnection.openTable('notes_vectors')
+  } else {
+    // bge-small-zh-v1.5 has 512 dimensions
+    const dummyVector = Array(512).fill(0)
+    notesTable = await lanceConnection.createTable('notes_vectors', [
+      { id: 'dummy', noteId: 'dummy', text: 'dummy', vector: dummyVector }
+    ])
+    await notesTable.delete("id = 'dummy'")
+  }
+
+  // Load local embedding model
   try {
-    if (process.platform === 'win32') {
-      const host = (process.env.SEEKDB_HOST || '').trim()
-      if (!host) {
-        server.log.warn('SeekDB embedded mode is not supported on win32-x64. Set SEEKDB_HOST/SEEKDB_PORT to use server mode, otherwise semantic search will be disabled.')
-        seekClient = null
-        seekCollection = null
-        return
-      }
-
-      seekClient = new SeekdbClient({
-        host,
-        port: Number(process.env.SEEKDB_PORT || 2881),
-        user: process.env.SEEKDB_USER || 'root',
-        password: process.env.SEEKDB_PASSWORD || '',
-        database: process.env.SEEKDB_DATABASE || 'inkb',
-        tenant: process.env.SEEKDB_TENANT || undefined,
-      } as any)
-    } else {
-      seekClient = new SeekdbClient({
-        path: SEEKDB_PATH,
-        database: 'inkb',
-      } as any)
-    }
-
-    seekCollection = await seekClient.createCollection({
-      name: 'notes',
-      embeddingFunction: new DefaultEmbeddingFunction(),
-    })
-  } catch (err: any) {
-    server.log.error(err)
-    seekClient = null
-    seekCollection = null
+    localExtractor = await pipeline('feature-extraction', 'Xenova/bge-small-zh-v1.5', {
+      quantized: true // use lightweight quantized version
+    });
+    console.log("Local embedding model loaded successfully");
+  } catch (err) {
+    console.error("Failed to load local embedding model:", err);
   }
 }
 
@@ -320,22 +313,29 @@ function chunkText(text: string, maxTokens = 500) {
 }
 
 async function getEmbeddings(texts: string[]): Promise<number[][]> {
-  if (!openaiEmbeddings) {
-    throw new Error('Embeddings not configured')
-  }
-
-  const vectors: number[][] = []
-  for (let i = 0; i < texts.length; i += 100) {
-    const batch = texts.slice(i, i + 100)
-    const response = await openaiEmbeddings.embeddings.create({
-      model: secrets.embeddingModel || 'text-embedding-3-small',
-      input: batch,
-    })
-    for (const data of response.data) {
-      vectors.push(data.embedding)
+  if (openaiEmbeddings) {
+    const vectors: number[][] = []
+    for (let i = 0; i < texts.length; i += 100) {
+      const batch = texts.slice(i, i + 100)
+      const response = await openaiEmbeddings.embeddings.create({
+        model: secrets.embeddingModel || 'text-embedding-3-small',
+        input: batch,
+      })
+      for (const data of response.data) {
+        vectors.push(data.embedding)
+      }
     }
+    return vectors
+  } else if (localExtractor) {
+    const vectors: number[][] = []
+    for (const text of texts) {
+      const output = await localExtractor(text, { pooling: 'mean', normalize: true });
+      vectors.push(Array.from(output.data));
+    }
+    return vectors;
+  } else {
+    throw new Error('No embedding model configured')
   }
-  return vectors
 }
 
 server.get('/api/settings', async () => {
@@ -535,22 +535,20 @@ const handleFileUpdate = async (filePath: string) => {
       insertFts.run({ id, title, content: parsed.content })
     })()
 
-    if (seekCollection) {
+    if (notesTable && (openaiEmbeddings || localExtractor)) {
       try {
-        await seekCollection.delete({
-          where: { noteId: id }
-        }).catch(() => {})
+        await notesTable.delete(`noteId = '${id}'`).catch(() => {})
         
         const chunks = chunkText(parsed.content)
         if (chunks.length > 0) {
-          const ids = chunks.map((_, i) => `${id}_${i}`)
-          const metadatas = chunks.map(() => ({ noteId: id }))
-          
-          await seekCollection.add({
-            ids,
-            documents: chunks,
-            metadatas
-          })
+          const vectors = await getEmbeddings(chunks)
+          const rows = chunks.map((chunk, i) => ({
+            id: `${id}_${i}`,
+            noteId: id,
+            text: chunk,
+            vector: vectors[i]
+          }))
+          await notesTable.add(rows)
         }
       } catch (err) {
         console.error(`Failed to vectorize file ${filePath}:`, err)
@@ -570,10 +568,8 @@ const handleFileRemove = async (filePath: string) => {
   })()
 
   try {
-    if (seekCollection) {
-      await seekCollection.delete({
-        where: { noteId: id }
-      }).catch(() => {})
+    if (notesTable) {
+      await notesTable.delete(`noteId = '${id}'`).catch(() => {})
     }
   } catch (err) {
     console.error(`Failed to delete vectors for file ${filePath}:`, err)
@@ -616,31 +612,30 @@ server.get('/api/search/semantic', async (request, reply) => {
     return []
   }
 
-  if (!seekCollection) {
-    return reply.code(400).send({ error: 'SeekDB not configured' })
+  if (!notesTable || (!openaiEmbeddings && !localExtractor)) {
+    return reply.code(400).send({ error: 'Vector search not configured' })
   }
 
   try {
-    const results = await seekCollection.query({
-      queryTexts: [q],
-      nResults: limit
-    })
+    const vectors = await getEmbeddings([q])
+    const queryVector = vectors[0]
 
-    const formattedResults = []
-    if (results.ids && results.ids[0]) {
-      for (let i = 0; i < results.ids[0].length; i++) {
-        const noteId = results.metadatas[0][i]?.noteId
-        const meta = db.prepare('SELECT title, filePath FROM notes_meta WHERE id = ?').get(noteId) as any
-        formattedResults.push({
-          id: results.ids[0][i],
-          noteId: noteId,
-          title: meta ? meta.title : 'Unknown',
-          filePath: meta ? meta.filePath : '',
-          text: results.documents[0][i],
-          score: results.distances ? results.distances[0][i] : 0
-        })
+    const results = await notesTable
+      .search(queryVector)
+      .limit(limit)
+      .toArray()
+
+    const formattedResults = results.map(r => {
+      const meta = db.prepare('SELECT title, filePath FROM notes_meta WHERE id = ?').get(r.noteId) as any
+      return {
+        id: r.id,
+        noteId: r.noteId,
+        title: meta ? meta.title : 'Unknown',
+        filePath: meta ? meta.filePath : '',
+        text: r.text,
+        score: r._distance
       }
-    }
+    })
 
     return formattedResults
   } catch (err: any) {
