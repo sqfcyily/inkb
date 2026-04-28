@@ -442,6 +442,7 @@ function App() {
     try {
       await fetch(`${API_URL}/notes/${noteToDelete}`, { method: 'DELETE' })
       setNotes((prev) => prev.filter(n => n.id !== noteToDelete))
+      setSearchResults((prev) => prev.filter(n => n.id !== noteToDelete))
       if (activeNoteId === noteToDelete) setActiveNoteId(null)
     } catch (err) {
       console.error('Failed to delete note', err)
