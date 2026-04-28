@@ -120,6 +120,7 @@ export const strings: Record<Lang, Record<string, string>> = {
     sortCreatedAsc: '创建日期（从旧到新）',
     sortTitleAsc: '标题（升序）',
     sortTitleDesc: '标题（降序）',
+    toggleSidebar: '切换侧边栏',
   },
   en: {
     appTitle: 'inkb',
@@ -232,6 +233,7 @@ export const strings: Record<Lang, Record<string, string>> = {
     sortCreatedAsc: 'Date Created (Oldest First)',
     sortTitleAsc: 'Title (Ascending)',
     sortTitleDesc: 'Title (Descending)',
+    toggleSidebar: 'Toggle Sidebar',
   }
 }
 

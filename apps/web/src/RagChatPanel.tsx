@@ -152,15 +152,14 @@ export const RagChatPanel: React.FC<{
 
   return (
     <>
-      {/* Floating Glass Panel */}
       <div 
-        className={`fixed top-4 right-4 bottom-4 w-[400px] z-[40001] flex flex-col overflow-hidden rounded-2xl bg-[var(--panel-bg)]/80 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-[var(--border)]/50 transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${
-          isOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : 'translate-x-12 opacity-0 pointer-events-none'
+        className={`w-80 lg:w-96 flex flex-col shrink-0 bg-[var(--panel-bg)] border-l border-[var(--border)] transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${
+          isOpen ? 'translate-x-0 opacity-100 min-w-[320px]' : 'translate-x-full opacity-0 min-w-0 w-0 overflow-hidden'
         }`}
       >
         
         {/* Header */}
-        <div className="h-14 flex items-center justify-between px-4 border-b border-[var(--border)]/30 shrink-0">
+        <div className="h-15 flex items-center justify-between px-4 border-b border-[var(--border)] shrink-0">
           <div className="font-semibold text-[15px] tracking-tight">Knowledge Chat</div>
           <button 
             onClick={onClose}

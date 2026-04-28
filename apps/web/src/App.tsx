@@ -105,8 +105,26 @@ function App() {
   type ToastType = 'info' | 'success' | 'error' | 'warning'
   const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null)
   
+  // Sidebar State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    const saved = localStorage.getItem('isSidebarOpen')
+    return saved !== null ? saved === 'true' : true
+  })
+
   // Rag Chat Panel State
-  const [isRagPanelOpen, setIsRagPanelOpen] = useState(false)
+  const [isRagPanelOpen, setIsRagPanelOpen] = useState(() => {
+    const saved = localStorage.getItem('isRagPanelOpen')
+    return saved !== null ? saved === 'true' : false
+  })
+
+  useEffect(() => {
+    localStorage.setItem('isSidebarOpen', isSidebarOpen.toString())
+  }, [isSidebarOpen])
+
+  useEffect(() => {
+    localStorage.setItem('isRagPanelOpen', isRagPanelOpen.toString())
+  }, [isRagPanelOpen])
+
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
@@ -635,6 +653,16 @@ function App() {
     <div className="h-screen w-screen flex flex-col bg-[var(--bg)] text-[var(--text)] overflow-hidden font-sans">
       <div className="mac-toolbar mac-glass relative z-[20000]">
         <div className="flex items-center gap-3 min-w-0 min-w-[150px] select-none group cursor-default">
+          <button 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="mac-icon-btn shrink-0"
+            title={t('toggleSidebar')}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+          </button>
           <div className="shrink-0 w-[40px] h-[40px] grid grid-cols-2 grid-rows-2 gap-[2px] p-[2px] bg-transparent">
             <div className="w-full h-full rounded-[6px] bg-[#2BB1AC] flex items-center justify-center text-[13px] font-black text-white">I</div>
             <div className="w-full h-full rounded-[6px] bg-[#E94372] flex items-center justify-center text-[13px] font-black text-white">N</div>
@@ -715,7 +743,7 @@ function App() {
       </div>
 
       <div className="flex flex-1 min-h-0">
-        <div className="mac-sidebar mac-glass w-56 min-w-0">
+        <div className={`mac-sidebar mac-glass min-w-0 transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isSidebarOpen ? 'w-56 border-r border-[var(--border)]' : 'w-0 opacity-0 overflow-hidden border-0'}`}>
           <div className="p-3">
             <button
               type="button"
@@ -1087,12 +1115,12 @@ function App() {
             </div>
           )}
         </div>
+        
+        {/* Right Docked Rag Panel */}
+        <RagChatPanel isOpen={isRagPanelOpen} onClose={() => setIsRagPanelOpen(false)} apiUrl={API_URL} />
       </div>
 
-      {/* Floating Rag Panel */}
-      <RagChatPanel isOpen={isRagPanelOpen} onClose={() => setIsRagPanelOpen(false)} apiUrl={API_URL} />
-
-        {categoryModalOpen && (
+      {categoryModalOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
             <div className="bg-[var(--panel-bg-2)] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[var(--border)]">
               <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-[var(--panel-bg)]">
