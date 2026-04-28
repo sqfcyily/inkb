@@ -742,10 +742,11 @@ function App() {
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0">
-        <div className={`mac-sidebar mac-glass min-w-0 transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isSidebarOpen ? 'w-56 border-r border-[var(--border)]' : 'w-0 opacity-0 overflow-hidden border-0'}`}>
-          <div className="p-3">
-            <button
+      <div className="flex flex-1 min-h-0 relative">
+        <div className={`mac-sidebar mac-glass shrink-0 transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isSidebarOpen ? 'w-56 border-r border-[var(--border)]' : 'w-0 opacity-0 overflow-hidden !border-none'}`}>
+          <div className="w-56 h-full flex flex-col">
+            <div className="p-3">
+              <button
               type="button"
               onClick={() => setSelectedCategory('All')}
               className={`w-full mac-btn ${selectedCategory === 'All' ? 'mac-btn-secondary' : 'mac-btn-ghost'} justify-start gap-2`}
@@ -786,8 +787,9 @@ function App() {
             </button>
           </div>
         </div>
+      </div>
 
-        <div className="mac-list mac-glass w-80 min-w-0">
+      <div className="mac-list mac-glass w-80 shrink-0">
           <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between h-15">
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate">

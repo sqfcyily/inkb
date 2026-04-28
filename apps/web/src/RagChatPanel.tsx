@@ -153,8 +153,8 @@ export const RagChatPanel: React.FC<{
   return (
     <>
       <div 
-        className={`w-80 lg:w-96 flex flex-col shrink-0 bg-[var(--panel-bg)] border-l border-[var(--border)] transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${
-          isOpen ? 'translate-x-0 opacity-100 min-w-[320px]' : 'translate-x-full opacity-0 min-w-0 w-0 overflow-hidden'
+        className={`flex flex-col shrink-0 bg-[var(--panel-bg)] transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${
+          isOpen ? 'w-80 lg:w-96 opacity-100 border-l border-[var(--border)]' : 'w-0 opacity-0 overflow-hidden !border-none'
         }`}
       >
         
