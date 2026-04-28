@@ -290,6 +290,12 @@ h1, h2, h3, h4, h5, h6, .display-font {
   flex: 1;
 }
 
+/* Disable BlockNote Side Menu (Drag Handle & Add Button) */
+.bn-side-menu {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 .cm-editor {
   background: transparent !important;
 }
