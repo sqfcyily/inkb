@@ -16,6 +16,7 @@ interface Note {
   updatedAt: string
   createdAt: string
   category?: string
+  weight?: number
 }
 
 function App() {
@@ -267,11 +268,12 @@ function App() {
         const keywordResults = keywordRes?.ok ? await keywordRes.json() : []
 
         const mergedMap = new Map()
+        let weightCounter = 0;
         
         // Prioritize keyword results (FTS usually gives better exact matches with highlights)
         if (Array.isArray(keywordResults)) {
           for (const r of keywordResults) {
-            mergedMap.set(r.id, r)
+            mergedMap.set(r.id, { ...r, weight: weightCounter++ })
           }
         }
 
@@ -284,7 +286,8 @@ function App() {
                 id: r.noteId,
                 title: r.title,
                 snippet: r.text.length > 100 ? r.text.substring(0, 100) + '...' : r.text,
-                createdAt: new Date().toISOString() // fallback date
+                createdAt: new Date().toISOString(), // fallback date
+                weight: weightCounter++
               })
             }
           }
@@ -610,6 +613,9 @@ function App() {
           : notes.filter(n => (n.category || 'Default') === selectedCategory))
           
     return [...filtered].sort((a, b) => {
+      if (searchQuery.trim()) {
+        return (a.weight || 0) - (b.weight || 0)
+      }
       switch (sortMode) {
         case 'created_desc': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         case 'created_asc': return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -788,47 +794,49 @@ function App() {
                 </>
               )}
 
-              <div className="relative group pb-2 -mb-2">
-                <button className="mac-icon-btn hover:bg-[var(--panel-bg-hover)]" title={t('sortBy')}>
-                  <ListFilter size={16} className="text-[var(--muted)]" />
-                </button>
-                <div className="absolute right-0 top-[calc(100%-8px)] mt-1 w-56 bg-[var(--panel-bg-2)]/95 backdrop-blur-2xl border border-[var(--border)] shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-xl p-1.5 z-[99999] hidden group-hover:block transition-all origin-top-right">
-                  <div className="px-2 py-1.5 text-[11px] font-semibold text-[var(--muted)] tracking-wider">
-                    {t('sortBy')}
-                  </div>
-                  <div className="space-y-0.5">
-                    <button 
-                      onClick={() => handleSortChange('created_desc')}
-                      className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'created_desc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
-                    >
-                      {t('sortCreatedDesc')}
-                      {sortMode === 'created_desc' && <CheckCircle size={14} className="opacity-100" />}
-                    </button>
-                    <button 
-                      onClick={() => handleSortChange('created_asc')}
-                      className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'created_asc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
-                    >
-                      {t('sortCreatedAsc')}
-                      {sortMode === 'created_asc' && <CheckCircle size={14} className="opacity-100" />}
-                    </button>
-                    <div className="h-px bg-[var(--border-subtle)] my-1 mx-2"></div>
-                    <button 
-                      onClick={() => handleSortChange('title_asc')}
-                      className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'title_asc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
-                    >
-                      {t('sortTitleAsc')}
-                      {sortMode === 'title_asc' && <CheckCircle size={14} className="opacity-100" />}
-                    </button>
-                    <button 
-                      onClick={() => handleSortChange('title_desc')}
-                      className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'title_desc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
-                    >
-                      {t('sortTitleDesc')}
-                      {sortMode === 'title_desc' && <CheckCircle size={14} className="opacity-100" />}
-                    </button>
+              {!searchQuery.trim() && (
+                <div className="relative group pb-2 -mb-2">
+                  <button className="mac-icon-btn hover:bg-[var(--panel-bg-hover)]" title={t('sortBy')}>
+                    <ListFilter size={16} className="text-[var(--muted)]" />
+                  </button>
+                  <div className="absolute right-0 top-[calc(100%-8px)] mt-1 w-56 bg-[var(--panel-bg-2)]/95 backdrop-blur-2xl border border-[var(--border)] shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-xl p-1.5 z-[99999] hidden group-hover:block transition-all origin-top-right">
+                    <div className="px-2 py-1.5 text-[11px] font-semibold text-[var(--muted)] tracking-wider">
+                      {t('sortBy')}
+                    </div>
+                    <div className="space-y-0.5">
+                      <button 
+                        onClick={() => handleSortChange('created_desc')}
+                        className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'created_desc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
+                      >
+                        {t('sortCreatedDesc')}
+                        {sortMode === 'created_desc' && <CheckCircle size={14} className="opacity-100" />}
+                      </button>
+                      <button 
+                        onClick={() => handleSortChange('created_asc')}
+                        className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'created_asc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
+                      >
+                        {t('sortCreatedAsc')}
+                        {sortMode === 'created_asc' && <CheckCircle size={14} className="opacity-100" />}
+                      </button>
+                      <div className="h-px bg-[var(--border-subtle)] my-1 mx-2"></div>
+                      <button 
+                        onClick={() => handleSortChange('title_asc')}
+                        className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'title_asc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
+                      >
+                        {t('sortTitleAsc')}
+                        {sortMode === 'title_asc' && <CheckCircle size={14} className="opacity-100" />}
+                      </button>
+                      <button 
+                        onClick={() => handleSortChange('title_desc')}
+                        className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'title_desc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
+                      >
+                        {t('sortTitleDesc')}
+                        {sortMode === 'title_desc' && <CheckCircle size={14} className="opacity-100" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
