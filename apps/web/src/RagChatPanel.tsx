@@ -9,9 +9,9 @@ export const RagChatPanel: React.FC<{
   const [messages, setMessages] = React.useState<any[]>([])
   const [input, setInput] = React.useState('')
   const [isLoading, setIsLoading] = React.useState(false)
-  
-  // 附件挂载状态
+
   const [attachedNote, setAttachedNote] = React.useState<any>(null)
+  const [mode, setMode] = React.useState<'chat' | 'global' | 'doc'>('chat')
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
@@ -40,11 +40,17 @@ export const RagChatPanel: React.FC<{
 
     let contextStr = ''
     
-    // 如果用户挂载了当前文档作为附件，则直接使用文档全文作为上下文，跳过混合检索
-    if (attachedNote && attachedNote.content) {
+    if (mode === 'doc') {
+      if (!attachedNote?.content) {
+        const aiMsgId = Date.now().toString()
+        setMessages((prev: any[]) => [
+          ...prev,
+          { id: aiMsgId, role: 'assistant', content: 'Attach a note first to ask about the current document.' }
+        ])
+        return
+      }
       contextStr = `[Source: ${attachedNote.title || 'Untitled'}]\n${attachedNote.content}`
-    } else {
-      // Find context using Hybrid Search (Semantic + Fulltext Fallback)
+    } else if (mode === 'global') {
       try {
         // 1. Parallel fetch from both semantic and keyword search
         const [semanticRes, keywordRes] = await Promise.all([
@@ -216,9 +222,65 @@ export const RagChatPanel: React.FC<{
 
         {/* Input */}
         <div className="p-4 shrink-0 bg-gradient-to-t from-[var(--panel-bg)] to-transparent">
-          {/* Attachment UI */}
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="inline-flex rounded-lg bg-[var(--bg)] border border-[var(--border)] p-0.5">
+              <button
+                type="button"
+                onClick={() => setMode('chat')}
+                className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
+                  mode === 'chat'
+                    ? 'bg-[var(--panel-bg)] text-[var(--text)]'
+                    : 'text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                AI
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('global')}
+                className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
+                  mode === 'global'
+                    ? 'bg-[var(--panel-bg)] text-[var(--text)]'
+                    : 'text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                全局检索
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('doc')}
+                className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
+                  mode === 'doc'
+                    ? 'bg-[var(--panel-bg)] text-[var(--text)]'
+                    : 'text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                当前文档
+              </button>
+            </div>
+
+            {!attachedNote && activeNote && (
+              <button
+                type="button"
+                onClick={() => setAttachedNote(activeNote)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--panel-bg)] transition-colors"
+                title="Attach current note as context"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                </svg>
+              </button>
+            )}
+          </div>
+
           {attachedNote && (
-            <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--sk-focus-color)]/10 text-[var(--sk-focus-color)] rounded-lg border border-[var(--sk-focus-color)]/20 text-xs font-medium max-w-full">
+            <div
+              className={`mb-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium max-w-full ${
+                mode === 'doc'
+                  ? 'bg-[var(--sk-focus-color)]/10 text-[var(--sk-focus-color)] border-[var(--sk-focus-color)]/20'
+                  : 'bg-[var(--panel-bg)] text-[var(--muted)] border-[var(--border)]'
+              }`}
+            >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -229,7 +291,7 @@ export const RagChatPanel: React.FC<{
               <span className="truncate">{attachedNote.title || 'Untitled Note'}</span>
               <button 
                 onClick={() => setAttachedNote(null)}
-                className="ml-1 p-0.5 rounded-full hover:bg-[var(--sk-focus-color)]/20 text-[var(--sk-focus-color)]/70 hover:text-[var(--sk-focus-color)] transition-colors shrink-0"
+                className="ml-1 p-0.5 rounded-full hover:bg-[var(--border)] transition-colors shrink-0"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M2 10L10 2M2 2L10 10" />
@@ -242,30 +304,20 @@ export const RagChatPanel: React.FC<{
             onSubmit={onFormSubmit}
             className="relative flex items-center bg-[var(--bg)] rounded-xl border border-[var(--border)] shadow-sm focus-within:ring-2 ring-[#0071e3]/30 transition-all"
           >
-            {/* Attach Current Note Button */}
-            {!attachedNote && activeNote && (
-              <button
-                type="button"
-                onClick={() => setAttachedNote(activeNote)}
-                className="absolute left-2 w-8 h-8 flex items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--panel-bg)] transition-colors"
-                title="Attach current note as context"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                </svg>
-              </button>
-            )}
-
             <input
               ref={inputRef}
               value={input}
               onChange={handleInputChange}
-              placeholder={attachedNote ? `Ask about ${attachedNote.title || 'this note'}...` : "Message..."}
-              className={`w-full bg-transparent border-none py-3 pr-12 text-[14px] focus:outline-none placeholder:text-[var(--muted)] ${!attachedNote && activeNote ? 'pl-11' : 'pl-4'}`}
+              placeholder={
+                mode === 'doc'
+                  ? (attachedNote ? `Ask about ${attachedNote.title || 'this note'}...` : 'Attach a note to ask about the current document...')
+                  : (mode === 'global' ? 'Search all notes and ask...' : 'Message...')
+              }
+              className="w-full bg-transparent border-none py-3 pl-4 pr-12 text-[14px] focus:outline-none placeholder:text-[var(--muted)]"
             />
             <button 
               type="submit"
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || (mode === 'doc' && !attachedNote)}
               className="absolute right-2 w-8 h-8 flex items-center justify-center rounded-lg bg-[#0071e3] text-white disabled:opacity-50 disabled:bg-[var(--border)] transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
