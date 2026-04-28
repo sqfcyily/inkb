@@ -1119,7 +1119,7 @@ function App() {
         </div>
         
         {/* Right Docked Rag Panel */}
-        <RagChatPanel isOpen={isRagPanelOpen} onClose={() => setIsRagPanelOpen(false)} apiUrl={API_URL} />
+        <RagChatPanel isOpen={isRagPanelOpen} onClose={() => setIsRagPanelOpen(false)} apiUrl={API_URL} activeNote={activeNote} />
       </div>
 
       {categoryModalOpen && (

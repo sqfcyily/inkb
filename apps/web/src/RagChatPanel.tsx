@@ -4,10 +4,14 @@ export const RagChatPanel: React.FC<{
   isOpen: boolean
   onClose: () => void
   apiUrl: string
-}> = ({ isOpen, onClose, apiUrl }) => {
+  activeNote: any
+}> = ({ isOpen, onClose, apiUrl, activeNote }) => {
   const [messages, setMessages] = React.useState<any[]>([])
   const [input, setInput] = React.useState('')
   const [isLoading, setIsLoading] = React.useState(false)
+  
+  // 附件挂载状态
+  const [attachedNote, setAttachedNote] = React.useState<any>(null)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
@@ -34,57 +38,63 @@ export const RagChatPanel: React.FC<{
     e.preventDefault()
     if (!input.trim() || isLoading) return
 
-    // Find context using Hybrid Search (Semantic + Fulltext Fallback)
     let contextStr = ''
-    try {
-      // 1. Parallel fetch from both semantic and keyword search
-      const [semanticRes, keywordRes] = await Promise.all([
-        fetch(`${apiUrl}/api/search/semantic?q=${encodeURIComponent(input)}&limit=3`).catch(() => null),
-        fetch(`${apiUrl}/api/search?q=${encodeURIComponent(input)}`).catch(() => null)
-      ])
+    
+    // 如果用户挂载了当前文档作为附件，则直接使用文档全文作为上下文，跳过混合检索
+    if (attachedNote && attachedNote.content) {
+      contextStr = `[Source: ${attachedNote.title || 'Untitled'}]\n${attachedNote.content}`
+    } else {
+      // Find context using Hybrid Search (Semantic + Fulltext Fallback)
+      try {
+        // 1. Parallel fetch from both semantic and keyword search
+        const [semanticRes, keywordRes] = await Promise.all([
+          fetch(`${apiUrl}/api/search/semantic?q=${encodeURIComponent(input)}&limit=3`).catch(() => null),
+          fetch(`${apiUrl}/api/search?q=${encodeURIComponent(input)}`).catch(() => null)
+        ])
 
-      const semanticResults = semanticRes?.ok ? await semanticRes.json() : []
-      const keywordResults = keywordRes?.ok ? await keywordRes.json() : []
+        const semanticResults = semanticRes?.ok ? await semanticRes.json() : []
+        const keywordResults = keywordRes?.ok ? await keywordRes.json() : []
 
-      // 2. Merge and deduplicate results
-      // We prioritize semantic results if available, then pad with keyword results
-      const mergedMap = new Map()
-      
-      // Add semantic results first
-      if (Array.isArray(semanticResults)) {
-        for (const r of semanticResults) {
-          if (r.noteId && !mergedMap.has(r.noteId)) {
-            mergedMap.set(r.noteId, r)
+        // 2. Merge and deduplicate results
+        // We prioritize semantic results if available, then pad with keyword results
+        const mergedMap = new Map()
+        
+        // Add semantic results first
+        if (Array.isArray(semanticResults)) {
+          for (const r of semanticResults) {
+            if (r.noteId && !mergedMap.has(r.noteId)) {
+              mergedMap.set(r.noteId, r)
+            }
           }
         }
-      }
 
-      // Add keyword results (FTS snippet might not have full text, but we can use what we have or fetch full if needed. 
-      // For now we just use the snippet or title if full text is not readily available in the list API)
-      if (Array.isArray(keywordResults)) {
-        for (const r of keywordResults) {
-          // If we already have this note from semantic search, skip it
-          if (!mergedMap.has(r.id)) {
-            // Note: FTS search returns {id, title, snippet}. We'll use snippet as text.
-            mergedMap.set(r.id, {
-              title: r.title,
-              text: r.snippet ? r.snippet.replace(/<[^>]*>?/gm, '') : '' // strip HTML tags from snippet
-            })
+        // Add keyword results (FTS snippet might not have full text, but we can use what we have or fetch full if needed. 
+        // For now we just use the snippet or title if full text is not readily available in the list API)
+        if (Array.isArray(keywordResults)) {
+          for (const r of keywordResults) {
+            // If we already have this note from semantic search, skip it
+            if (!mergedMap.has(r.id)) {
+              // Note: FTS search returns {id, title, snippet}. We'll use snippet as text.
+              mergedMap.set(r.id, {
+                title: r.title,
+                text: r.snippet ? r.snippet.replace(/<[^>]*>?/gm, '') : '' // strip HTML tags from snippet
+              })
+            }
           }
         }
-      }
 
-      // 3. Take top 4 unique documents
-      const finalResults = Array.from(mergedMap.values()).slice(0, 4)
+        // 3. Take top 4 unique documents
+        const finalResults = Array.from(mergedMap.values()).slice(0, 4)
 
-      if (finalResults.length > 0) {
-        contextStr = finalResults
-          .filter(r => r.text && r.text.trim().length > 0)
-          .map(r => `[Source: ${r.title}]\n${r.text}`)
-          .join('\n\n')
+        if (finalResults.length > 0) {
+          contextStr = finalResults
+            .filter(r => r.text && r.text.trim().length > 0)
+            .map(r => `[Source: ${r.title}]\n${r.text}`)
+            .join('\n\n')
+        }
+      } catch (e) {
+        console.error('Failed to fetch context', e)
       }
-    } catch (e) {
-      console.error('Failed to fetch context', e)
     }
 
     const originalInput = input
@@ -206,21 +216,57 @@ export const RagChatPanel: React.FC<{
 
         {/* Input */}
         <div className="p-4 shrink-0 bg-gradient-to-t from-[var(--panel-bg)] to-transparent">
+          {/* Attachment UI */}
+          {attachedNote && (
+            <div className="mb-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--sk-focus-color)]/10 text-[var(--sk-focus-color)] rounded-lg border border-[var(--sk-focus-color)]/20 text-xs font-medium max-w-full">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              <span className="truncate">{attachedNote.title || 'Untitled Note'}</span>
+              <button 
+                onClick={() => setAttachedNote(null)}
+                className="ml-1 p-0.5 rounded-full hover:bg-[var(--sk-focus-color)]/20 text-[var(--sk-focus-color)]/70 hover:text-[var(--sk-focus-color)] transition-colors shrink-0"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M2 10L10 2M2 2L10 10" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <form 
             onSubmit={onFormSubmit}
-            className="relative flex items-center bg-[var(--bg)] rounded-full border border-[var(--border)] shadow-sm focus-within:ring-2 ring-[#0071e3]/30 transition-all"
+            className="relative flex items-center bg-[var(--bg)] rounded-xl border border-[var(--border)] shadow-sm focus-within:ring-2 ring-[#0071e3]/30 transition-all"
           >
+            {/* Attach Current Note Button */}
+            {!attachedNote && activeNote && (
+              <button
+                type="button"
+                onClick={() => setAttachedNote(activeNote)}
+                className="absolute left-2 w-8 h-8 flex items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--panel-bg)] transition-colors"
+                title="Attach current note as context"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                </svg>
+              </button>
+            )}
+
             <input
               ref={inputRef}
               value={input}
               onChange={handleInputChange}
-              placeholder="Message..."
-              className="w-full bg-transparent border-none py-3 pl-5 pr-12 text-[14px] focus:outline-none placeholder:text-[var(--muted)]"
+              placeholder={attachedNote ? `Ask about ${attachedNote.title || 'this note'}...` : "Message..."}
+              className={`w-full bg-transparent border-none py-3 pr-12 text-[14px] focus:outline-none placeholder:text-[var(--muted)] ${!attachedNote && activeNote ? 'pl-11' : 'pl-4'}`}
             />
             <button 
               type="submit"
               disabled={!input.trim() || isLoading}
-              className="absolute right-2 w-8 h-8 flex items-center justify-center rounded-full bg-[#0071e3] text-white disabled:opacity-50 disabled:bg-[var(--border)] transition-colors"
+              className="absolute right-2 w-8 h-8 flex items-center justify-center rounded-lg bg-[#0071e3] text-white disabled:opacity-50 disabled:bg-[var(--border)] transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M12 5l7 7-7 7" />
