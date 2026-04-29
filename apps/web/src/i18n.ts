@@ -121,6 +121,16 @@ export const strings: Record<Lang, Record<string, string>> = {
     sortTitleAsc: '标题（升序）',
     sortTitleDesc: '标题（降序）',
     toggleSidebar: '切换侧边栏',
+    ragTitle: '知识对话',
+    ragEmptyState: '可以问我任何关于笔记的问题',
+    ragModeAi: 'AI',
+    ragModeGlobal: '全局检索',
+    ragModeDoc: '当前文档',
+    ragPlaceholderChat: '输入消息…',
+    ragPlaceholderGlobal: '搜索全局笔记并提问…',
+    ragPlaceholderDoc: '围绕“{title}”提问…',
+    ragPlaceholderDocNoAttach: '请先挂载文档后提问…',
+    ragAttachFirstPrompt: '请先挂载一篇笔记，再进行当前文档问答。',
   },
   en: {
     appTitle: 'inkb',
@@ -234,6 +244,16 @@ export const strings: Record<Lang, Record<string, string>> = {
     sortTitleAsc: 'Title (Ascending)',
     sortTitleDesc: 'Title (Descending)',
     toggleSidebar: 'Toggle Sidebar',
+    ragTitle: 'Knowledge Chat',
+    ragEmptyState: 'Ask anything about your notes',
+    ragModeAi: 'AI',
+    ragModeGlobal: 'Global Search',
+    ragModeDoc: 'Current Note',
+    ragPlaceholderChat: 'Message...',
+    ragPlaceholderGlobal: 'Search all notes and ask...',
+    ragPlaceholderDoc: 'Ask about “{title}”...',
+    ragPlaceholderDocNoAttach: 'Attach a note to ask about the current document...',
+    ragAttachFirstPrompt: 'Attach a note first to ask about the current document.',
   }
 }
 

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { useI18n } from './I18nProvider'
 
 export const RagChatPanel: React.FC<{
   isOpen: boolean
@@ -8,6 +9,7 @@ export const RagChatPanel: React.FC<{
   apiUrl: string
   activeNote: any
 }> = ({ isOpen, onClose, apiUrl, activeNote }) => {
+  const { t } = useI18n()
   const [messages, setMessages] = React.useState<any[]>([])
   const [input, setInput] = React.useState('')
   const [isLoading, setIsLoading] = React.useState(false)
@@ -75,11 +77,11 @@ export const RagChatPanel: React.FC<{
         const aiMsgId = Date.now().toString()
         setMessages((prev: any[]) => [
           ...prev,
-          { id: aiMsgId, role: 'assistant', content: 'Attach a note first to ask about the current document.' }
+          { id: aiMsgId, role: 'assistant', content: t('ragAttachFirstPrompt') }
         ])
         return
       }
-      contextStr = `[Source: ${attachedNote.title || 'Untitled'}]\n${attachedNote.content}`
+      contextStr = `[Source: ${attachedNote.title || t('untitled')}]\n${attachedNote.content}`
     } else if (mode === 'global') {
       try {
         // 1. Parallel fetch from both semantic and keyword search
@@ -205,7 +207,7 @@ export const RagChatPanel: React.FC<{
       >
         
         <div className="h-15 flex items-center justify-between px-4 border-b border-[var(--border)] shrink-0">
-          <div className="font-semibold text-[15px] tracking-tight">Knowledge Chat</div>
+          <div className="font-semibold text-[15px] tracking-tight">{t('ragTitle')}</div>
           <button 
             onClick={onClose}
             className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[var(--border)] transition-colors text-[var(--muted)] hover:text-[var(--text)]"
@@ -223,7 +225,7 @@ export const RagChatPanel: React.FC<{
                 <circle cx="11" cy="11" r="8"></circle>
                 <path d="M21 21l-4.35-4.35"></path>
               </svg>
-              <p className="text-sm">Ask anything about your notes</p>
+              <p className="text-sm">{t('ragEmptyState')}</p>
             </div>
           ) : (
             messages.map((m: any) => (
@@ -307,7 +309,7 @@ export const RagChatPanel: React.FC<{
                   <line x1="16" y1="17" x2="8" y2="17"></line>
                   <polyline points="10 9 9 9 8 9"></polyline>
                 </svg>
-                <span className="truncate">{attachedNote.title || 'Untitled Note'}</span>
+                <span className="truncate">{attachedNote.title || t('untitled')}</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -315,7 +317,7 @@ export const RagChatPanel: React.FC<{
                     setMode(lastNonDocModeRef.current)
                   }}
                   className="ml-1 p-0.5 rounded-full hover:bg-[var(--sk-focus-color)]/15 transition-colors shrink-0"
-                  title="Cancel"
+                  title={t('cancel')}
                 >
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M2 10L10 2M2 2L10 10" />
@@ -335,7 +337,7 @@ export const RagChatPanel: React.FC<{
                       : 'text-[var(--muted)] hover:text-[var(--text)]'
                   }`}
                 >
-                  AI
+                  {t('ragModeAi')}
                 </button>
                 <button
                   type="button"
@@ -346,7 +348,7 @@ export const RagChatPanel: React.FC<{
                       : 'text-[var(--muted)] hover:text-[var(--text)]'
                   }`}
                 >
-                  全局检索
+                  {t('ragModeGlobal')}
                 </button>
                 <button
                   type="button"
@@ -360,7 +362,7 @@ export const RagChatPanel: React.FC<{
                           : 'text-[var(--muted)] hover:text-[var(--text)]'
                   }`}
                 >
-                  当前文档
+                  {t('ragModeDoc')}
                 </button>
               </div>
             </div>
@@ -376,8 +378,10 @@ export const RagChatPanel: React.FC<{
               onChange={handleInputChange}
               placeholder={
                 mode === 'doc'
-                  ? (attachedNote ? `Ask about ${attachedNote.title || 'this note'}...` : 'Attach a note to ask about the current document...')
-                  : (mode === 'global' ? 'Search all notes and ask...' : 'Message...')
+                  ? (attachedNote
+                      ? t('ragPlaceholderDoc', { title: attachedNote.title || t('untitled') })
+                      : t('ragPlaceholderDocNoAttach'))
+                  : (mode === 'global' ? t('ragPlaceholderGlobal') : t('ragPlaceholderChat'))
               }
               className="w-full bg-transparent border-none py-3 pl-4 pr-12 text-[14px] focus:outline-none placeholder:text-[var(--muted)]"
             />
