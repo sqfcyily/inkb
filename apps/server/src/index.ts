@@ -7,6 +7,7 @@ import fs from 'fs/promises'
 import fsSync from 'fs'
 import path from 'path'
 import os from 'os'
+import { spawn } from 'child_process'
 import { ulid } from 'ulid'
 import matter from 'gray-matter'
 import Database from 'better-sqlite3'
@@ -23,6 +24,72 @@ import { pipeline, env } from '@xenova/transformers'
 env.allowLocalModels = false;
 
 const pdfParse = typeof pdfParseMod === 'function' ? pdfParseMod : (pdfParseMod as any).default;
+
+type CliOptions = {
+  host: string
+  port: number
+  open: boolean
+}
+
+const printHelpAndExit = () => {
+  const text = [
+    'inkb',
+    '',
+    'Usage:',
+    '  inkb [--host 127.0.0.1] [--port 31777] [--open]',
+    '',
+    'Options:',
+    '  --host   Bind host (default: 127.0.0.1)',
+    '  --port   Bind port (default: 31777)',
+    '  --open   Open browser after start',
+    '  -h,--help  Show help',
+  ].join('\n')
+  console.log(text)
+  process.exit(0)
+}
+
+const parseCliOptions = (): CliOptions => {
+  const args = process.argv.slice(2)
+  let host = '127.0.0.1'
+  let port = Number(process.env.PORT) || 31777
+  let open = false
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a === '-h' || a === '--help') {
+      printHelpAndExit()
+    } else if (a === '--host') {
+      const v = args[i + 1]
+      if (v) {
+        host = v
+        i++
+      }
+    } else if (a === '--port') {
+      const v = args[i + 1]
+      if (v && !Number.isNaN(Number(v))) {
+        port = Number(v)
+        i++
+      }
+    } else if (a === '--open') {
+      open = true
+    }
+  }
+
+  return { host, port, open }
+}
+
+const openInBrowser = (url: string) => {
+  const platform = process.platform
+  const cmd =
+    platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open'
+  const cmdArgs =
+    platform === 'win32' ? ['/c', 'start', '', url] : [url]
+
+  const child = spawn(cmd, cmdArgs, { stdio: 'ignore', detached: true })
+  child.unref()
+}
+
+const cli = parseCliOptions()
 
 const server = Fastify({ logger: true })
 
@@ -1141,9 +1208,13 @@ const start = async () => {
       .on('change', handleFileUpdate)
       .on('unlink', handleFileRemove)
 
-    const port = Number(process.env.PORT) || 31777
-    await server.listen({ port, host: '0.0.0.0' })
-    console.log(`Server is running on http://localhost:${port}`)
+    await server.listen({ port: cli.port, host: cli.host })
+    const urlHost = cli.host === '0.0.0.0' ? '127.0.0.1' : cli.host
+    const url = `http://${urlHost}:${cli.port}`
+    console.log(`Server is running on ${url}`)
+    if (cli.open) {
+      openInBrowser(url)
+    }
   } catch (err) {
     server.log.error(err)
     process.exit(1)

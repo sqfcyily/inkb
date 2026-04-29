@@ -35,6 +35,23 @@
 
 - Node.js（建议 18+）
 
+### npm CLI（推荐给普通用户）
+
+发布到 npm 后，可直接全局安装并启动：
+
+```bash
+npm i -g @sqfcy/inkb
+inkb --open
+```
+
+默认仅监听本机 `127.0.0.1:31777`。常用参数：
+
+```bash
+inkb --port 31777
+inkb --host 0.0.0.0 --port 31777
+inkb -h
+```
+
 ### 安装
 
 在项目根目录执行：
@@ -92,4 +109,3 @@ npm start
 ## 许可证
 
 未指定（如需开源许可证，请补充 LICENSE 文件）。
-
