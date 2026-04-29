@@ -12,6 +12,12 @@ export const RagChatPanel: React.FC<{
 
   const [attachedNote, setAttachedNote] = React.useState<any>(null)
   const [mode, setMode] = React.useState<'chat' | 'global' | 'doc'>('chat')
+  const docAutoAttachRef = useRef(false)
+
+  const handleModeChange = (nextMode: 'chat' | 'global' | 'doc') => {
+    docAutoAttachRef.current = nextMode === 'doc'
+    setMode(nextMode)
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
@@ -32,6 +38,18 @@ export const RagChatPanel: React.FC<{
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [isOpen])
+
+  useEffect(() => {
+    if (!docAutoAttachRef.current) return
+    if (mode !== 'doc') return
+    if (attachedNote) {
+      docAutoAttachRef.current = false
+      return
+    }
+    if (!activeNote) return
+    setAttachedNote(activeNote)
+    docAutoAttachRef.current = false
+  }, [activeNote, attachedNote, mode])
 
   // Custom submit to inject context
   const onFormSubmit = async (e: React.FormEvent) => {
@@ -226,7 +244,7 @@ export const RagChatPanel: React.FC<{
             <div className="inline-flex rounded-lg bg-[var(--bg)] border border-[var(--border)] p-0.5">
               <button
                 type="button"
-                onClick={() => setMode('chat')}
+                onClick={() => handleModeChange('chat')}
                 className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
                   mode === 'chat'
                     ? 'bg-[var(--panel-bg)] text-[var(--text)]'
@@ -237,7 +255,7 @@ export const RagChatPanel: React.FC<{
               </button>
               <button
                 type="button"
-                onClick={() => setMode('global')}
+                onClick={() => handleModeChange('global')}
                 className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
                   mode === 'global'
                     ? 'bg-[var(--panel-bg)] text-[var(--text)]'
@@ -248,7 +266,7 @@ export const RagChatPanel: React.FC<{
               </button>
               <button
                 type="button"
-                onClick={() => setMode('doc')}
+                onClick={() => handleModeChange('doc')}
                 className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
                   mode === 'doc'
                     ? 'bg-[var(--panel-bg)] text-[var(--text)]'
@@ -259,7 +277,17 @@ export const RagChatPanel: React.FC<{
               </button>
             </div>
 
-            {!attachedNote && activeNote && (
+            {mode === 'doc' && attachedNote && activeNote && attachedNote.id !== activeNote.id && (
+              <button
+                type="button"
+                onClick={() => setAttachedNote(activeNote)}
+                className="h-8 px-3 rounded-lg text-[12px] font-medium text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--panel-bg)] transition-colors"
+              >
+                更新为当前
+              </button>
+            )}
+
+            {mode !== 'doc' && !attachedNote && activeNote && (
               <button
                 type="button"
                 onClick={() => setAttachedNote(activeNote)}
