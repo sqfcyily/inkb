@@ -14,6 +14,11 @@ import { Readability } from '@mozilla/readability'
 import { JSDOM } from 'jsdom'
 import pdfParseMod from 'pdf-parse'
 import { simpleGit, SimpleGit } from 'simple-git'
+import * as lancedb from '@lancedb/lancedb'
+import { pipeline, env } from '@xenova/transformers'
+
+// Disable local models checking if we want to download from HF
+env.allowLocalModels = false;
 
 const pdfParse = typeof pdfParseMod === 'function' ? pdfParseMod : (pdfParseMod as any).default;
 
@@ -45,9 +50,18 @@ const hasNotesGitRepo = () => {
 }
 
 let openai: OpenAI
-let secrets: { baseURL?: string, apiKey?: string, chatModel?: string }
+let secrets: {
+  baseURL?: string
+  apiKey?: string
+  chatModel?: string
+}
 let config: { notesGitRemoteUrl?: string | null, notesGitBranch?: string }
 let git: SimpleGit
+
+const LANCE_DB_DIR = path.join(DB_DIR, 'lancedb')
+let lanceConnection: lancedb.Connection
+let notesTable: lancedb.Table
+let localExtractor: any
 
 async function ensureNotesRepo(remoteUrl: string, branch: string) {
   const hasOwnRepo = hasNotesGitRepo()
@@ -139,7 +153,11 @@ async function setupDependencies() {
       chatModel: raw?.chatModel
     }
   } catch {
-    secrets = { baseURL: 'https://api.openai.com/v1', apiKey: '', chatModel: 'gpt-4o-mini' }
+    secrets = {
+      baseURL: 'https://api.openai.com/v1',
+      apiKey: '',
+      chatModel: 'gpt-4o-mini'
+    }
     await fs.writeFile(SECRETS_FILE, JSON.stringify(secrets, null, 2))
   }
 
@@ -170,11 +188,36 @@ async function setupDependencies() {
   if (!secrets.baseURL) {
     secrets.baseURL = 'https://api.openai.com/v1'
   }
-
   openai = new OpenAI({
     baseURL: secrets.baseURL,
     apiKey: secrets.apiKey || 'dummy',
   })
+}
+
+async function setupLanceDB() {
+  await fs.mkdir(LANCE_DB_DIR, { recursive: true }).catch(() => { })
+  lanceConnection = await lancedb.connect(LANCE_DB_DIR)
+  const tableNames = await lanceConnection.tableNames()
+  if (tableNames.includes('notes_vectors')) {
+    notesTable = await lanceConnection.openTable('notes_vectors')
+  } else {
+    // bge-small-zh-v1.5 has 512 dimensions
+    const dummyVector = Array(512).fill(0)
+    notesTable = await lanceConnection.createTable('notes_vectors', [
+      { id: 'dummy', noteId: 'dummy', text: 'dummy', vector: dummyVector }
+    ])
+    await notesTable.delete("id = 'dummy'")
+  }
+
+  // Load local embedding model
+  try {
+    localExtractor = await pipeline('feature-extraction', 'Xenova/bge-small-zh-v1.5', {
+      quantized: true // use lightweight quantized version
+    });
+    console.log("Local embedding model loaded successfully");
+  } catch (err) {
+    console.error("Failed to load local embedding model:", err);
+  }
 }
 
 // Database setup
@@ -245,6 +288,19 @@ function chunkText(text: string, maxTokens = 500) {
   return chunks.length > 0 ? chunks : [text.trim()].filter(Boolean)
 }
 
+async function getEmbeddings(texts: string[]): Promise<number[][]> {
+  if (localExtractor) {
+    const vectors: number[][] = []
+    for (const text of texts) {
+      const output = await localExtractor(text, { pooling: 'mean', normalize: true });
+      vectors.push(Array.from(output.data));
+    }
+    return vectors;
+  } else {
+    throw new Error('No local embedding model configured')
+  }
+}
+
 server.get('/api/settings', async () => {
   return {
     baseURL: secrets.baseURL || '',
@@ -254,7 +310,11 @@ server.get('/api/settings', async () => {
 })
 
 server.put('/api/settings', async (request, reply) => {
-  const body = request.body as { baseURL?: string, apiKey?: string, chatModel?: string }
+  const body = request.body as {
+    baseURL?: string
+    apiKey?: string
+    chatModel?: string
+  }
 
   const next: typeof secrets = {
     baseURL: body.baseURL !== undefined ? body.baseURL : secrets.baseURL,
@@ -372,6 +432,26 @@ const handleFileUpdate = async (filePath: string) => {
       deleteFts.run(id)
       insertFts.run({ id, title, content: parsed.content })
     })()
+
+    if (notesTable && localExtractor) {
+      try {
+        await notesTable.delete(`noteId = '${id}'`).catch(() => {})
+        
+        const chunks = chunkText(parsed.content)
+        if (chunks.length > 0) {
+          const vectors = await getEmbeddings(chunks)
+          const rows = chunks.map((chunk, i) => ({
+            id: `${id}_${i}`,
+            noteId: id,
+            text: chunk,
+            vector: vectors[i]
+          }))
+          await notesTable.add(rows)
+        }
+      } catch (err) {
+        console.error(`Failed to vectorize file ${filePath}:`, err)
+      }
+    }
   } catch (err) {
     console.error(`Failed to process file ${filePath}:`, err)
   }
@@ -384,6 +464,14 @@ const handleFileRemove = async (filePath: string) => {
     deleteMeta.run(id)
     deleteFts.run(id)
   })()
+
+  try {
+    if (notesTable) {
+      await notesTable.delete(`noteId = '${id}'`).catch(() => {})
+    }
+  } catch (err) {
+    console.error(`Failed to delete vectors for file ${filePath}:`, err)
+  }
 }
 
 server.get('/api/search', async (request, reply) => {
@@ -413,6 +501,47 @@ server.get('/api/search', async (request, reply) => {
   }
 })
 
+server.get('/api/search/semantic', async (request, reply) => {
+  const query = request.query as { q?: string, limit?: string }
+  const q = query.q || ''
+  const limit = parseInt(query.limit || '5', 10)
+
+  if (!q) {
+    return []
+  }
+
+  if (!notesTable || !localExtractor) {
+    return reply.code(400).send({ error: 'Vector search not configured' })
+  }
+
+  try {
+    const vectors = await getEmbeddings([q])
+    const queryVector = vectors[0]
+
+    const results = await notesTable
+      .search(queryVector)
+      .limit(limit)
+      .toArray()
+
+    const formattedResults = results.map(r => {
+      const meta = db.prepare('SELECT title, filePath FROM notes_meta WHERE id = ?').get(r.noteId) as any
+      return {
+        id: r.id,
+        noteId: r.noteId,
+        title: meta ? meta.title : 'Unknown',
+        filePath: meta ? meta.filePath : '',
+        text: r.text,
+        score: r._distance
+      }
+    })
+
+    return formattedResults
+  } catch (err: any) {
+    server.log.error(err)
+    return reply.code(500).send({ error: err.message || 'Failed to perform semantic search' })
+  }
+})
+
 server.post('/api/ingest/url', async (request, reply) => {
   const { url } = request.body as { url: string };
   try {
@@ -439,7 +568,7 @@ server.post('/api/ingest/url', async (request, reply) => {
     }
 
     await fs.writeFile(filePath, fileContent, 'utf-8');
-
+    
     return { id, title };
   } catch (err) {
     return reply.code(500).send({ error: 'Failed to ingest URL' });
@@ -486,7 +615,7 @@ server.post('/api/ingest/file', async (request, reply) => {
     }
 
     await fs.writeFile(filePath, fileContent, 'utf-8');
-
+    
     return { id, title };
   } catch (err) {
     console.error(err);
@@ -513,7 +642,7 @@ server.post('/api/ingest/memo', async (request, reply) => {
   }
 
   await fs.writeFile(filePath, fileContent, 'utf-8');
-
+  
   return { id, title };
 });
 
@@ -607,6 +736,48 @@ server.post('/api/ai/completion', async (request, reply) => {
     if (!reply.raw.headersSent) {
       return reply.code(500).send({ error: err.message || 'Failed to generate AI completion' });
     } else {
+      reply.raw.end();
+    }
+  }
+});
+
+server.post('/api/ai/chat', async (request, reply) => {
+  const { messages } = request.body as { messages: any[] };
+  if (!messages || !Array.isArray(messages)) return reply.code(400).send({ error: 'Invalid messages' });
+
+  if (!secrets.apiKey || secrets.apiKey === 'dummy') {
+    return reply.code(400).send({ error: 'API Key not configured' });
+  }
+
+  try {
+    const stream = await openai.chat.completions.create({
+      model: secrets.chatModel || "gpt-4o-mini",
+      messages,
+      stream: true,
+    });
+
+    reply.raw.setHeader('Content-Type', 'text/event-stream');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    const origin = request.headers.origin || '*';
+    reply.raw.setHeader('Access-Control-Allow-Origin', origin);
+    reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+    reply.raw.flushHeaders();
+
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || '';
+      if (content) {
+        reply.raw.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+      }
+    }
+    reply.raw.write('data: [DONE]\n\n');
+    reply.raw.end();
+  } catch (err: any) {
+    console.error(err);
+    if (!reply.raw.headersSent) {
+      return reply.code(500).send({ error: err.message || 'Failed to generate AI response' });
+    } else {
+      reply.raw.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
       reply.raw.end();
     }
   }
@@ -750,7 +921,7 @@ server.post('/notes', async (request, reply) => {
     await fs.mkdir(path.join(NOTES_DIR, folder), { recursive: true }).catch(() => { })
   }
   await fs.writeFile(filePath, fileContent, 'utf-8')
-
+  
   return { id, title, content, createdAt: now, updatedAt: now, category }
 })
 
@@ -805,7 +976,7 @@ server.put('/notes/:id', async (request, reply) => {
     }
 
     await fs.writeFile(filePath, fileContent, 'utf-8')
-
+    
     return {
       id: parsed.data.id || id,
       title: data.title,
@@ -824,7 +995,8 @@ server.delete('/notes/:id', async (request, reply) => {
   try {
     const row = db.prepare('SELECT filePath FROM notes_meta WHERE id = ?').get(id) as any
     if (row) {
-      await fs.unlink(path.join(NOTES_DIR, row.filePath))
+      const filePath = path.join(NOTES_DIR, row.filePath)
+      await fs.unlink(filePath)
     }
     return { success: true }
   } catch (err) {
@@ -936,6 +1108,7 @@ let watcher: any
 const start = async () => {
   try {
     await setupDependencies()
+    await setupLanceDB()
 
     watcher = chokidar.watch(NOTES_DIR, {
       ignored: [/(^|[\/\\])\../, '**/.git/**', '**/node_modules/**'],

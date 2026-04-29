@@ -1,0 +1,9 @@
+- [x] `seekdb` and `@seekdb/default-embed` dependencies are installed in `apps/server`.
+- [x] `vectordb` dependency is removed.
+- [x] `SeekdbClient` is initialized in embedded mode pointing to a local database.
+- [x] A SeekDB collection is created with default embedding function.
+- [x] `handleFileUpdate` correctly inserts/updates text chunks or full documents into the SeekDB collection.
+- [x] `handleFileRemove` correctly deletes documents from the SeekDB collection.
+- [x] The `/api/search` endpoint executes queries against the SeekDB collection.
+- [x] The `/api/search/semantic` endpoint correctly executes semantic/hybrid queries against the SeekDB collection.
+- [x] The frontend RAG component (`RagChatPanel.tsx`) correctly calls the search endpoints and displays the retrieved context.

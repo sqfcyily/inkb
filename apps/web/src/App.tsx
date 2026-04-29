@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Plus, Settings, FileText, Trash2, Search, ArrowDownToLine, Link, File, FileEdit, X, RefreshCw, AlertTriangle, Info, CheckCircle, Eye, Edit3, Sparkles, Sun, Moon, Monitor, Folder, ChevronDown, PlusCircle, ListFilter } from 'lucide-react'
+import { Plus, Settings, FileText, Trash2, ArrowDownToLine, Link, File, FileEdit, X, RefreshCw, AlertTriangle, Info, CheckCircle, Eye, Edit3, Sparkles, Sun, Moon, Monitor, Folder, ChevronDown, PlusCircle, ListFilter, Search } from 'lucide-react'
 import { useI18n } from './I18nProvider'
 import NoteEditor from './NoteEditor'
+import { RagChatPanel } from './RagChatPanel'
 
 const API_URL =
   (import.meta as any)?.env?.VITE_API_URL ||
@@ -15,6 +16,7 @@ interface Note {
   updatedAt: string
   createdAt: string
   category?: string
+  weight?: number
 }
 
 function App() {
@@ -75,12 +77,19 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [settings, setSettings] = useState<{ baseURL: string, chatModel: string, hasApiKey: boolean } | null>(null)
+  const [settings, setSettings] = useState<{
+    baseURL: string
+    chatModel: string
+    hasApiKey: boolean
+    embeddingBaseURL: string
+    embeddingModel: string
+    hasEmbeddingApiKey: boolean
+  } | null>(null)
   const [settingsBaseURL, setSettingsBaseURL] = useState('')
   const [settingsChatModel, setSettingsChatModel] = useState('')
   const [settingsApiKey, setSettingsApiKey] = useState('')
   const [isSavingSettings, setIsSavingSettings] = useState(false)
-  const [isTestingSettings, setIsTestingSettings] = useState(false)
+  const [isTestingChatSettings, setIsTestingChatSettings] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'general' | 'git' | 'llm'>('general')
 
   const [notesGitRemoteUrl, setNotesGitRemoteUrl] = useState('')
@@ -95,6 +104,27 @@ function App() {
   // Toast State
   type ToastType = 'info' | 'success' | 'error' | 'warning'
   const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null)
+  
+  // Sidebar State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    const saved = localStorage.getItem('isSidebarOpen')
+    return saved !== null ? saved === 'true' : true
+  })
+
+  // Rag Chat Panel State
+  const [isRagPanelOpen, setIsRagPanelOpen] = useState(() => {
+    const saved = localStorage.getItem('isRagPanelOpen')
+    return saved !== null ? saved === 'true' : false
+  })
+
+  useEffect(() => {
+    localStorage.setItem('isSidebarOpen', isSidebarOpen.toString())
+  }, [isSidebarOpen])
+
+  useEffect(() => {
+    localStorage.setItem('isRagPanelOpen', isRagPanelOpen.toString())
+  }, [isRagPanelOpen])
+
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
@@ -247,9 +277,41 @@ function App() {
     const delayDebounceFn = setTimeout(async () => {
       setIsSearching(true)
       try {
-        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(searchQuery)}`)
-        const data = await res.json()
-        setSearchResults(data)
+        const [semanticRes, keywordRes] = await Promise.all([
+          fetch(`${API_URL}/api/search/semantic?q=${encodeURIComponent(searchQuery)}&limit=5`).catch(() => null),
+          fetch(`${API_URL}/api/search?q=${encodeURIComponent(searchQuery)}`).catch(() => null)
+        ])
+
+        const semanticResults = semanticRes?.ok ? await semanticRes.json() : []
+        const keywordResults = keywordRes?.ok ? await keywordRes.json() : []
+
+        const mergedMap = new Map()
+        let weightCounter = 0;
+        
+        // Prioritize keyword results (FTS usually gives better exact matches with highlights)
+        if (Array.isArray(keywordResults)) {
+          for (const r of keywordResults) {
+            mergedMap.set(r.id, { ...r, weight: weightCounter++ })
+          }
+        }
+
+        // Fill in semantic results
+        if (Array.isArray(semanticResults)) {
+          for (const r of semanticResults) {
+            if (r.noteId && !mergedMap.has(r.noteId)) {
+              // Convert semantic result format to match keyword result format for UI
+              mergedMap.set(r.noteId, {
+                id: r.noteId,
+                title: r.title,
+                snippet: r.text.length > 100 ? r.text.substring(0, 100) + '...' : r.text,
+                createdAt: new Date().toISOString(), // fallback date
+                weight: weightCounter++
+              })
+            }
+          }
+        }
+
+        setSearchResults(Array.from(mergedMap.values()))
       } catch (err) {
         console.error('Failed to search', err)
       } finally {
@@ -398,6 +460,7 @@ function App() {
     try {
       await fetch(`${API_URL}/notes/${noteToDelete}`, { method: 'DELETE' })
       setNotes((prev) => prev.filter(n => n.id !== noteToDelete))
+      setSearchResults((prev) => prev.filter(n => n.id !== noteToDelete))
       if (activeNoteId === noteToDelete) setActiveNoteId(null)
     } catch (err) {
       console.error('Failed to delete note', err)
@@ -569,6 +632,9 @@ function App() {
           : notes.filter(n => (n.category || 'Default') === selectedCategory))
           
     return [...filtered].sort((a, b) => {
+      if (searchQuery.trim()) {
+        return (a.weight || 0) - (b.weight || 0)
+      }
       switch (sortMode) {
         case 'created_desc': return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         case 'created_asc': return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -587,6 +653,16 @@ function App() {
     <div className="h-screen w-screen flex flex-col bg-[var(--bg)] text-[var(--text)] overflow-hidden font-sans">
       <div className="mac-toolbar mac-glass relative z-[20000]">
         <div className="flex items-center gap-3 min-w-0 min-w-[150px] select-none group cursor-default">
+          <button 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="mac-icon-btn shrink-0"
+            title={t('toggleSidebar')}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+          </button>
           <div className="shrink-0 w-[40px] h-[40px] grid grid-cols-2 grid-rows-2 gap-[2px] p-[2px] bg-transparent">
             <div className="w-full h-full rounded-[6px] bg-[#2BB1AC] flex items-center justify-center text-[13px] font-black text-white">I</div>
             <div className="w-full h-full rounded-[6px] bg-[#E94372] flex items-center justify-center text-[13px] font-black text-white">N</div>
@@ -613,10 +689,21 @@ function App() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="mac-input w-full pl-[36px] pr-3"
             />
+            <Search className="absolute left-3 text-[var(--muted)]" size={16} />
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0 min-w-[150px] justify-end">
+          <button 
+            onClick={() => setIsRagPanelOpen(!isRagPanelOpen)} 
+            className={`mac-icon-btn ${isRagPanelOpen ? 'text-[#0071e3]' : ''}`} 
+            title="Knowledge Chat"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+
           <button onClick={createNote} className="mac-btn mac-btn-primary inline-flex items-center gap-2" title={t('newNote')}>
             <Plus size={16} />
             <span className="hidden sm:inline">{t('newNote')}</span>
@@ -655,10 +742,11 @@ function App() {
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0">
-        <div className="mac-sidebar mac-glass w-56 min-w-0">
-          <div className="p-3">
-            <button
+      <div className="flex flex-1 min-h-0 relative">
+        <div className={`mac-sidebar mac-glass shrink-0 transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isSidebarOpen ? 'w-56 border-r border-[var(--border)]' : 'w-0 opacity-0 overflow-hidden !border-none'}`}>
+          <div className="w-56 h-full flex flex-col">
+            <div className="p-3">
+              <button
               type="button"
               onClick={() => setSelectedCategory('All')}
               className={`w-full mac-btn ${selectedCategory === 'All' ? 'mac-btn-secondary' : 'mac-btn-ghost'} justify-start gap-2`}
@@ -699,8 +787,9 @@ function App() {
             </button>
           </div>
         </div>
+      </div>
 
-        <div className="mac-list mac-glass w-80 min-w-0">
+      <div className="mac-list mac-glass w-80 shrink-0">
           <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between h-15">
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate">
@@ -736,47 +825,49 @@ function App() {
                 </>
               )}
 
-              <div className="relative group pb-2 -mb-2">
-                <button className="mac-icon-btn hover:bg-[var(--panel-bg-hover)]" title={t('sortBy')}>
-                  <ListFilter size={16} className="text-[var(--muted)]" />
-                </button>
-                <div className="absolute right-0 top-[calc(100%-8px)] mt-1 w-56 bg-[var(--panel-bg-2)]/95 backdrop-blur-2xl border border-[var(--border)] shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-xl p-1.5 z-[99999] hidden group-hover:block transition-all origin-top-right">
-                  <div className="px-2 py-1.5 text-[11px] font-semibold text-[var(--muted)] tracking-wider">
-                    {t('sortBy')}
-                  </div>
-                  <div className="space-y-0.5">
-                    <button 
-                      onClick={() => handleSortChange('created_desc')}
-                      className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'created_desc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
-                    >
-                      {t('sortCreatedDesc')}
-                      {sortMode === 'created_desc' && <CheckCircle size={14} className="opacity-100" />}
-                    </button>
-                    <button 
-                      onClick={() => handleSortChange('created_asc')}
-                      className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'created_asc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
-                    >
-                      {t('sortCreatedAsc')}
-                      {sortMode === 'created_asc' && <CheckCircle size={14} className="opacity-100" />}
-                    </button>
-                    <div className="h-px bg-[var(--border-subtle)] my-1 mx-2"></div>
-                    <button 
-                      onClick={() => handleSortChange('title_asc')}
-                      className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'title_asc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
-                    >
-                      {t('sortTitleAsc')}
-                      {sortMode === 'title_asc' && <CheckCircle size={14} className="opacity-100" />}
-                    </button>
-                    <button 
-                      onClick={() => handleSortChange('title_desc')}
-                      className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'title_desc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
-                    >
-                      {t('sortTitleDesc')}
-                      {sortMode === 'title_desc' && <CheckCircle size={14} className="opacity-100" />}
-                    </button>
+              {!searchQuery.trim() && (
+                <div className="relative group pb-2 -mb-2">
+                  <button className="mac-icon-btn hover:bg-[var(--panel-bg-hover)]" title={t('sortBy')}>
+                    <ListFilter size={16} className="text-[var(--muted)]" />
+                  </button>
+                  <div className="absolute right-0 top-[calc(100%-8px)] mt-1 w-56 bg-[var(--panel-bg-2)]/95 backdrop-blur-2xl border border-[var(--border)] shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-xl p-1.5 z-[99999] hidden group-hover:block transition-all origin-top-right">
+                    <div className="px-2 py-1.5 text-[11px] font-semibold text-[var(--muted)] tracking-wider">
+                      {t('sortBy')}
+                    </div>
+                    <div className="space-y-0.5">
+                      <button 
+                        onClick={() => handleSortChange('created_desc')}
+                        className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'created_desc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
+                      >
+                        {t('sortCreatedDesc')}
+                        {sortMode === 'created_desc' && <CheckCircle size={14} className="opacity-100" />}
+                      </button>
+                      <button 
+                        onClick={() => handleSortChange('created_asc')}
+                        className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'created_asc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
+                      >
+                        {t('sortCreatedAsc')}
+                        {sortMode === 'created_asc' && <CheckCircle size={14} className="opacity-100" />}
+                      </button>
+                      <div className="h-px bg-[var(--border-subtle)] my-1 mx-2"></div>
+                      <button 
+                        onClick={() => handleSortChange('title_asc')}
+                        className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'title_asc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
+                      >
+                        {t('sortTitleAsc')}
+                        {sortMode === 'title_asc' && <CheckCircle size={14} className="opacity-100" />}
+                      </button>
+                      <button 
+                        onClick={() => handleSortChange('title_desc')}
+                        className={`w-full px-2 py-1.5 text-left text-[13px] font-medium rounded-md flex items-center justify-between transition-colors ${sortMode === 'title_desc' ? 'bg-[var(--sk-focus-color)] text-white' : 'text-[var(--text)] hover:bg-[var(--sk-focus-color)] hover:text-white'}`}
+                      >
+                        {t('sortTitleDesc')}
+                        {sortMode === 'title_desc' && <CheckCircle size={14} className="opacity-100" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -1026,9 +1117,12 @@ function App() {
             </div>
           )}
         </div>
+        
+        {/* Right Docked Rag Panel */}
+        <RagChatPanel isOpen={isRagPanelOpen} onClose={() => setIsRagPanelOpen(false)} apiUrl={API_URL} activeNote={activeNote} />
       </div>
 
-        {categoryModalOpen && (
+      {categoryModalOpen && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
             <div className="bg-[var(--panel-bg-2)] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[var(--border)]">
               <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-[var(--panel-bg)]">
@@ -1381,41 +1475,44 @@ function App() {
               </div>
 
               <div className="p-4 border-t border-[var(--border)] bg-[var(--panel-bg)] flex justify-between gap-3">
-                {settingsTab === 'llm' ? (
-                  <button
-                    onClick={async () => {
-                      setIsTestingSettings(true)
-                      showToast(t('testing'), 'info')
-                      try {
-                        const body: any = {
-                          baseURL: settingsBaseURL,
-                          chatModel: settingsChatModel
+                {settingsTab === 'llm' && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        setIsTestingChatSettings(true)
+                        showToast(t('testing'), 'info')
+                        try {
+                          const body: any = {
+                            baseURL: settingsBaseURL,
+                            chatModel: settingsChatModel
+                          }
+                          if (settingsApiKey) body.apiKey = settingsApiKey
+                          const res = await fetch(`${API_URL}/api/settings/test`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                          })
+                          const data = await res.json().catch(() => ({}))
+                          if (!res.ok) {
+                            showToast(data?.error || t('connectionTestFailed'), 'error')
+                            return
+                          }
+                          showToast(t('connectionOk'), 'success')
+                        } catch (err) {
+                          console.error(err)
+                          showToast(t('connectionTestFailed'), 'error')
+                        } finally {
+                          setIsTestingChatSettings(false)
                         }
-                        if (settingsApiKey) body.apiKey = settingsApiKey
-                        const res = await fetch(`${API_URL}/api/settings/test`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(body)
-                        })
-                        const data = await res.json().catch(() => ({}))
-                        if (!res.ok) {
-                          showToast(data?.error || t('connectionTestFailed'), 'error')
-                          return
-                        }
-                        showToast(t('connectionOk'), 'success')
-                      } catch (err) {
-                        console.error(err)
-                        showToast(t('connectionTestFailed'), 'error')
-                      } finally {
-                        setIsTestingSettings(false)
-                      }
-                    }}
-                    disabled={isTestingSettings}
-                    className="mac-btn mac-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isTestingSettings ? t('testing') : t('test')}
-                  </button>
-                ) : (
+                      }}
+                      disabled={isTestingChatSettings}
+                      className="mac-btn mac-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isTestingChatSettings ? t('testing') : t('test')}
+                    </button>
+                  </div>
+                )}
+                {settingsTab !== 'llm' && (
                   <div />
                 )}
 
@@ -1433,7 +1530,7 @@ function App() {
                     try {
                       const body: any = {
                         baseURL: settingsBaseURL,
-                        chatModel: settingsChatModel
+                        chatModel: settingsChatModel,
                       }
                       if (settingsApiKey) body.apiKey = settingsApiKey
                       const res = await fetch(`${API_URL}/api/settings`, {
