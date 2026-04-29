@@ -89,7 +89,3 @@ npm start
 - `apps/server`：本地 API 服务（Fastify），负责笔记索引、搜索、同步与 AI 接口
 - `apps/web`：前端 Web UI
 
-## 许可证
-
-未指定（如需开源许可证，请补充 LICENSE 文件）。
-
