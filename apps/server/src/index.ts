@@ -1,6 +1,8 @@
+#!/usr/bin/env node
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
+import fastifyStatic from '@fastify/static'
 import fs from 'fs/promises'
 import fsSync from 'fs'
 import path from 'path'
@@ -1104,6 +1106,24 @@ server.post('/api/git/sync', async (request, reply) => {
 })
 
 let watcher: any
+
+// Serve frontend static files
+const publicDir = path.join(__dirname, '../public')
+if (fsSync.existsSync(publicDir)) {
+  server.register(fastifyStatic, {
+    root: publicDir,
+    prefix: '/',
+  })
+
+  // Handle SPA routing (return index.html for non-API routes)
+  server.setNotFoundHandler((request, reply) => {
+    if (request.raw.url && request.raw.url.startsWith('/api/')) {
+      reply.status(404).send({ error: 'Not Found' })
+    } else {
+      reply.sendFile('index.html')
+    }
+  })
+}
 
 const start = async () => {
   try {

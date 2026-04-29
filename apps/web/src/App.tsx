@@ -6,7 +6,9 @@ import { RagChatPanel } from './RagChatPanel'
 
 const API_URL =
   (import.meta as any)?.env?.VITE_API_URL ||
-  `${window.location.protocol}//${window.location.hostname}:${(import.meta as any)?.env?.VITE_API_PORT || 31777}`
+  ((import.meta as any)?.env?.DEV
+    ? `${window.location.protocol}//${window.location.hostname}:${(import.meta as any)?.env?.VITE_API_PORT || 31777}`
+    : '') // In production, use relative path (same origin as static server)
 
 interface Note {
   id: string
