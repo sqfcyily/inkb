@@ -1,4 +1,6 @@
 import React, { useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 export const RagChatPanel: React.FC<{
   isOpen: boolean
@@ -234,7 +236,55 @@ export const RagChatPanel: React.FC<{
                     ? 'bg-[#0071e3] text-white rounded-br-sm' 
                     : 'bg-[var(--border)]/30 text-[var(--text)] rounded-bl-sm'}
                 `}>
-                  {m.content || (
+                  {m.content ? (
+                    m.role === 'assistant' ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: (props) => <p className="whitespace-pre-wrap" {...props} />,
+                          ul: (props) => <ul className="list-disc pl-5 my-2 space-y-1" {...props} />,
+                          ol: (props) => <ol className="list-decimal pl-5 my-2 space-y-1" {...props} />,
+                          li: (props) => <li className="leading-relaxed" {...props} />,
+                          a: (props) => (
+                            <a
+                              className="underline text-[var(--sk-body-link-color)]"
+                              target="_blank"
+                              rel="noreferrer"
+                              {...props}
+                            />
+                          ),
+                          code: ({ className, children, ...props }) => {
+                            const isBlock = typeof className === 'string' && className.includes('language-')
+                            if (isBlock) {
+                              return (
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              )
+                            }
+                            return (
+                              <code
+                                className="px-1 py-0.5 rounded bg-[var(--bg)] border border-[var(--border)] text-[13px]"
+                                {...props}
+                              >
+                                {children}
+                              </code>
+                            )
+                          },
+                          pre: (props) => (
+                            <pre
+                              className="my-2 overflow-x-auto rounded-lg bg-[var(--bg)] border border-[var(--border)] p-3 text-[13px]"
+                              {...props}
+                            />
+                          ),
+                        }}
+                      >
+                        {m.content}
+                      </ReactMarkdown>
+                    ) : (
+                      m.content
+                    )
+                  ) : (
                     <span className="inline-flex gap-1 items-center h-5">
                       <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 animate-bounce" style={{ animationDelay: '0ms' }}/>
                       <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 animate-bounce" style={{ animationDelay: '150ms' }}/>
