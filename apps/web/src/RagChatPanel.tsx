@@ -13,9 +13,19 @@ export const RagChatPanel: React.FC<{
   const [attachedNote, setAttachedNote] = React.useState<any>(null)
   const [mode, setMode] = React.useState<'chat' | 'global' | 'doc'>('chat')
   const docAutoAttachRef = useRef(false)
+  const lastNonDocModeRef = useRef<'chat' | 'global'>('chat')
 
   const handleModeChange = (nextMode: 'chat' | 'global' | 'doc') => {
-    docAutoAttachRef.current = nextMode === 'doc'
+    if (nextMode === 'doc') {
+      if (!activeNote && !attachedNote) return
+      if (mode !== 'doc') {
+        lastNonDocModeRef.current = mode === 'global' ? 'global' : 'chat'
+      }
+      docAutoAttachRef.current = !attachedNote
+    } else {
+      lastNonDocModeRef.current = nextMode
+      docAutoAttachRef.current = false
+    }
     setMode(nextMode)
   }
 
@@ -240,91 +250,72 @@ export const RagChatPanel: React.FC<{
 
         {/* Input */}
         <div className="p-4 shrink-0 bg-gradient-to-t from-[var(--panel-bg)] to-transparent">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="inline-flex rounded-lg bg-[var(--bg)] border border-[var(--border)] p-0.5">
-              <button
-                type="button"
-                onClick={() => handleModeChange('chat')}
-                className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
-                  mode === 'chat'
-                    ? 'bg-[var(--panel-bg)] text-[var(--text)]'
-                    : 'text-[var(--muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                AI
-              </button>
-              <button
-                type="button"
-                onClick={() => handleModeChange('global')}
-                className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
-                  mode === 'global'
-                    ? 'bg-[var(--panel-bg)] text-[var(--text)]'
-                    : 'text-[var(--muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                全局检索
-              </button>
-              <button
-                type="button"
-                onClick={() => handleModeChange('doc')}
-                className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
-                  mode === 'doc'
-                    ? 'bg-[var(--panel-bg)] text-[var(--text)]'
-                    : 'text-[var(--muted)] hover:text-[var(--text)]'
-                }`}
-              >
-                当前文档
-              </button>
+          {mode === 'doc' && attachedNote ? (
+            <div className="mb-2">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--sk-focus-color)]/10 text-[var(--sk-focus-color)] rounded-lg border border-[var(--sk-focus-color)]/20 text-xs font-medium max-w-full">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <span className="truncate">{attachedNote.title || 'Untitled Note'}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAttachedNote(null)
+                    setMode(lastNonDocModeRef.current)
+                  }}
+                  className="ml-1 p-0.5 rounded-full hover:bg-[var(--sk-focus-color)]/15 transition-colors shrink-0"
+                  title="Cancel"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M2 10L10 2M2 2L10 10" />
+                  </svg>
+                </button>
+              </div>
             </div>
-
-            {mode === 'doc' && attachedNote && activeNote && attachedNote.id !== activeNote.id && (
-              <button
-                type="button"
-                onClick={() => setAttachedNote(activeNote)}
-                className="h-8 px-3 rounded-lg text-[12px] font-medium text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--panel-bg)] transition-colors"
-              >
-                更新为当前
-              </button>
-            )}
-
-            {mode !== 'doc' && !attachedNote && activeNote && (
-              <button
-                type="button"
-                onClick={() => setAttachedNote(activeNote)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--panel-bg)] transition-colors"
-                title="Attach current note as context"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                </svg>
-              </button>
-            )}
-          </div>
-
-          {attachedNote && (
-            <div
-              className={`mb-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium max-w-full ${
-                mode === 'doc'
-                  ? 'bg-[var(--sk-focus-color)]/10 text-[var(--sk-focus-color)] border-[var(--sk-focus-color)]/20'
-                  : 'bg-[var(--panel-bg)] text-[var(--muted)] border-[var(--border)]'
-              }`}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-              <span className="truncate">{attachedNote.title || 'Untitled Note'}</span>
-              <button 
-                onClick={() => setAttachedNote(null)}
-                className="ml-1 p-0.5 rounded-full hover:bg-[var(--border)] transition-colors shrink-0"
-              >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M2 10L10 2M2 2L10 10" />
-                </svg>
-              </button>
+          ) : (
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="inline-flex rounded-lg bg-[var(--bg)] border border-[var(--border)] p-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('chat')}
+                  className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
+                    mode === 'chat'
+                      ? 'bg-[var(--panel-bg)] text-[var(--text)]'
+                      : 'text-[var(--muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  AI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('global')}
+                  className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
+                    mode === 'global'
+                      ? 'bg-[var(--panel-bg)] text-[var(--text)]'
+                      : 'text-[var(--muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  全局检索
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('doc')}
+                  disabled={!activeNote && !attachedNote}
+                  className={`px-2.5 py-1 text-[12px] font-medium rounded-md transition-colors ${
+                    mode === 'doc'
+                      ? 'bg-[var(--panel-bg)] text-[var(--text)]'
+                      : (!activeNote && !attachedNote)
+                          ? 'text-[var(--muted)] opacity-40 cursor-not-allowed'
+                          : 'text-[var(--muted)] hover:text-[var(--text)]'
+                  }`}
+                >
+                  当前文档
+                </button>
+              </div>
             </div>
           )}
 
